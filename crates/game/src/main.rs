@@ -1,5 +1,6 @@
 mod audio;
 mod cockpit;
+mod controls_ui;
 mod driving;
 mod hud;
 mod input;
@@ -37,6 +38,7 @@ fn main() {
             hud::plugin,
             audio::plugin,
             save::plugin,
+            controls_ui::plugin,
         ))
         .run();
 }

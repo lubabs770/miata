@@ -6,6 +6,7 @@ use drivetrain::{LessonId, Outcome, TransmissionMode};
 use egui_plot::{Legend, Line, Plot, PlotPoints, VLine};
 
 use crate::AppState;
+use crate::controls_ui::ControlsUi;
 use crate::driving::{Drive, Sample, Trace};
 use crate::input::Pedals;
 use crate::save::Progress;
@@ -134,6 +135,7 @@ fn lesson_panel(
     mut pedals: ResMut<Pedals>,
     time: Res<Time>,
     progress: Res<Progress>,
+    mut controls: ResMut<ControlsUi>,
 ) -> Result {
     let seed = time.elapsed().as_nanos() as u64;
     let mut start: Option<Option<LessonId>> = None;
@@ -199,7 +201,9 @@ fn lesson_panel(
                 }
             }
             ui.separator();
-            ui.small(KEYS);
+            if ui.button("Controls…").clicked() {
+                controls.open = !controls.open;
+            }
         });
     if start.is_none() && drive.lesson.is_some() && drive.outcome != Outcome::Running {
         // Enter retries a finished lesson without reaching for the mouse.

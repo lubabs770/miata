@@ -6,6 +6,7 @@ use drivetrain::{LessonId, Outcome, TransmissionMode};
 use serde::{Deserialize, Serialize};
 
 use crate::driving::Drive;
+use crate::input::Bindings;
 
 const KEY: &str = "miata-progress";
 
@@ -16,6 +17,7 @@ pub struct Progress {
     pub best: Vec<u8>,
     pub car: usize,
     pub mode: Mode,
+    pub bindings: Bindings,
 }
 
 /// Serializable mirror of `TransmissionMode` (the sim crate stays serde-free).
@@ -79,14 +81,22 @@ pub fn plugin(app: &mut App) {
         .add_systems(Update, (track, persist).chain());
 }
 
-fn restore_choices(progress: Res<Progress>, mut drive: ResMut<Drive>) {
+fn restore_choices(
+    progress: Res<Progress>,
+    mut drive: ResMut<Drive>,
+    mut bindings: ResMut<Bindings>,
+) {
+    *bindings = progress.bindings.clone();
     if progress.car < drive.cars.len() {
         drive.car = progress.car;
     }
     drive.mode = progress.mode.into();
 }
 
-fn track(drive: Res<Drive>, mut progress: ResMut<Progress>) {
+fn track(drive: Res<Drive>, bindings: Res<Bindings>, mut progress: ResMut<Progress>) {
+    if progress.bindings != *bindings {
+        progress.bindings = bindings.clone();
+    }
     if let (Some(run), Outcome::Passed { stars }) = (&drive.lesson, drive.outcome)
         && progress.stars(run.id) < stars
     {
