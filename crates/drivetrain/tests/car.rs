@@ -5,7 +5,10 @@ fn miata_loads_with_published_ratios() {
     let c = CarSpec::miata();
     assert_eq!(c.top_gear(), 5);
     assert!((c.ratio(1).unwrap() - 3.136 * 4.30).abs() < 1e-4);
-    assert!(c.ratio(-1).unwrap() < 0.0, "reverse spins the wheels backwards");
+    assert!(
+        c.ratio(-1).unwrap() < 0.0,
+        "reverse spins the wheels backwards"
+    );
     assert_eq!(c.ratio(0), None);
     assert_eq!(c.ratio(6), None);
 }
