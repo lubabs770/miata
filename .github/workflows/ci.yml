@@ -54,7 +54,8 @@ jobs:
 
   deploy:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [check, web]
+    # Ship as soon as the web build passes; check (clippy + tests) still gates PRs.
+    needs: web
     runs-on: ubuntu-latest
     permissions:
       pages: write
