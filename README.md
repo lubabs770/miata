@@ -18,7 +18,7 @@ pass the lessons here, the sequence and timing carry over to a real car.
 - The bite point moves a little each session, so you learn to *feel* for it
   rather than memorise it.
 - A coffee cup on the dash that spills if you drive jerkily.
-- Eight lessons, each graded with 1–3 stars, plus free drive:
+- Twelve lessons, each graded with 1–3 stars, plus free drive:
   1. Find the bite point
   2. Pull away
   3. Stop without stalling
@@ -27,6 +27,10 @@ pass the lessons here, the sequence and timing carry over to a real car.
   6. Drive 500 m
   7. Hill start with the handbrake
   8. Hill start on the foot brake
+  9. Car-park creep into a marked space
+  10. Stop-and-go traffic behind another car
+  11. Stop sign and left turn
+  12. Stop sign on a hill
 - A procedural engine sound that follows rpm and load.
 - Three cars: the NA Miata, a turbo hot hatch, and an old pickup that stalls
   easily.
@@ -39,8 +43,7 @@ pass the lessons here, the sequence and timing carry over to a real car.
 - Progress saving: best stars per lesson, plus your car and gearbox choices
   (browser storage on the web, a JSON file on desktop).
 
-Planned next: wheel and pedal calibration, traffic and
-parking lessons, then real streets from OpenStreetMap. See the [design spec](docs/superpowers/specs/2026-10-06-miata-design.md).
+Planned next: wheel and pedal calibration, paddle-mode lessons, then real streets from OpenStreetMap. See the [design spec](docs/superpowers/specs/2026-10-06-miata-design.md).
 
 ## Controls
 

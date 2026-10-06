@@ -3,8 +3,7 @@
 use std::f32::consts::{FRAC_PI_2, PI};
 
 use bevy::prelude::*;
-use drivetrain::SimState;
-
+use drivetrain::{CAR_LEN, LessonId, PARK_BOX, SimState};
 use leafwing_input_manager::prelude::*;
 
 use crate::driving::Drive;
@@ -83,10 +82,16 @@ struct Coffee;
 pub fn plugin(app: &mut App) {
     app.insert_resource(ClearColor(Color::srgb(0.62, 0.78, 0.93)))
         .init_resource::<View>()
-        .add_systems(Startup, (spawn_world, spawn_car))
+        .add_systems(Startup, (spawn_world, spawn_car, spawn_props))
         .add_systems(
             Update,
-            (follow_sim, animate_cockpit, switch_view, show_hill),
+            (
+                follow_sim,
+                animate_cockpit,
+                switch_view,
+                show_hill,
+                place_props,
+            ),
         );
 }
 
@@ -383,4 +388,105 @@ mod tests {
         }
         assert_eq!(v, View::Cockpit);
     }
+}
+
+/// Lesson props, spawned hidden and shown by `place_props`.
+#[derive(Component)]
+struct LeadCar;
+#[derive(Component)]
+struct StopProp;
+#[derive(Component)]
+struct ParkingLines;
+
+fn spawn_props(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let white = mat(&mut materials, Color::WHITE);
+    commands.spawn((
+        LeadCar,
+        Visibility::Hidden,
+        Mesh3d(meshes.add(Cuboid::new(1.75, 1.3, CAR_LEN))),
+        mat(&mut materials, Color::srgb(0.15, 0.3, 0.75)),
+        Transform::default(),
+    ));
+    // Stop line across the road plus an octagonal sign on the right.
+    commands
+        .spawn((StopProp, Visibility::Hidden, Transform::default()))
+        .with_children(|p| {
+            p.spawn((
+                Mesh3d(meshes.add(Cuboid::new(8.0, 0.03, 0.4))),
+                white.clone(),
+                Transform::from_xyz(0.0, 0.02, 0.0),
+            ));
+            p.spawn((
+                Mesh3d(meshes.add(Cylinder::new(0.04, 2.2))),
+                white.clone(),
+                Transform::from_xyz(4.6, 1.1, 0.0),
+            ));
+            p.spawn((
+                Mesh3d(meshes.add(Cylinder::new(0.38, 0.03).mesh().resolution(8))),
+                mat(&mut materials, Color::srgb(0.8, 0.05, 0.05)),
+                Transform::from_xyz(4.6, 2.2, 0.03).with_rotation(Quat::from_rotation_x(FRAC_PI_2)),
+            ));
+        });
+    // Parking space outline. PARK_BOX is where the driver's seat must stop,
+    // so the painted space runs a car-length ahead of it.
+    let (near, far) = (PARK_BOX.0 - 1.0, PARK_BOX.1 + 3.0);
+    let side = meshes.add(Cuboid::new(0.12, 0.03, far - near));
+    let end = meshes.add(Cuboid::new(2.6, 0.03, 0.12));
+    commands
+        .spawn((ParkingLines, Visibility::Hidden, Transform::default()))
+        .with_children(|p| {
+            let mid = -(near + far) / 2.0;
+            for x in [-1.3, 1.3] {
+                p.spawn((
+                    Mesh3d(side.clone()),
+                    white.clone(),
+                    Transform::from_xyz(x, 0.02, mid),
+                ));
+            }
+            p.spawn((
+                Mesh3d(end.clone()),
+                white.clone(),
+                Transform::from_xyz(0.0, 0.02, -far),
+            ));
+        });
+}
+
+#[allow(clippy::type_complexity)]
+fn place_props(
+    drive: Res<Drive>,
+    mut q: ParamSet<(
+        Single<(&mut Transform, &mut Visibility), With<LeadCar>>,
+        Single<(&mut Transform, &mut Visibility), With<StopProp>>,
+        Single<&mut Visibility, With<ParkingLines>>,
+    )>,
+) {
+    let lesson = drive.lesson.as_ref();
+    let shown = |on: bool| {
+        if on {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        }
+    };
+    {
+        let mut lead = q.p0();
+        let (t, vis) = &mut *lead;
+        let x = lesson.and_then(|l| l.lead).map(|l| l.x);
+        **vis = shown(x.is_some());
+        // At gap 0 the lead's rear bumper is CAR_LEN ahead of our reference point.
+        t.translation = Vec3::new(0.0, 0.65, -(x.unwrap_or(0.0) + CAR_LEN / 2.0));
+    }
+    {
+        let mut stop = q.p1();
+        let (t, vis) = &mut *stop;
+        let line = lesson.and_then(|l| l.id.stop_line());
+        **vis = shown(line.is_some());
+        let line = line.unwrap_or(0.0);
+        t.translation = Vec3::new(0.0, (HILL_RUN_IN + line) * grade(&drive), -line);
+    }
+    **q.p2() = shown(lesson.is_some_and(|l| l.id == LessonId::Parking));
 }

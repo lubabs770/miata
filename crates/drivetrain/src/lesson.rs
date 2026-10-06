@@ -3,6 +3,85 @@ use crate::sim::{Controls, Env, Event, Sim, SimState};
 
 /// Slope used by the hill lessons (8%: a steep-ish town street).
 pub const HILL_GRADE: f32 = 0.08;
+/// Parking lesson: stop with the car's reference point inside this x range.
+pub const PARK_BOX: (f32, f32) = (18.0, 20.5);
+/// Stop-sign lessons: the line's distance ahead of the start.
+pub const STOP_LINE: f32 = 40.0;
+pub const HILL_STOP_LINE: f32 = 25.0;
+/// Bumper-to-reference distance used for following gaps.
+pub const CAR_LEN: f32 = 4.0;
+/// Stop-and-go: how many times the car in front starts and stops.
+const TRAFFIC_CYCLES: u8 = 4;
+
+/// The car in front in the stop-and-go lesson: waits, pulls away to
+/// 20 km/h, cruises, brakes to a stop, repeats.
+#[derive(Debug, Clone, Copy)]
+pub struct Lead {
+    pub x: f32,
+    v: f32,
+    phase: LeadPhase,
+    phase_t: f32,
+    cycles: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum LeadPhase {
+    Accelerate,
+    Cruise,
+    Brake,
+    Wait,
+}
+
+impl Lead {
+    fn new() -> Self {
+        Self {
+            x: 12.0,
+            v: 0.0,
+            phase: LeadPhase::Wait,
+            phase_t: 4.0,
+            cycles: 0,
+        }
+    }
+
+    fn step(&mut self, dt: f32) {
+        match self.phase {
+            LeadPhase::Accelerate => {
+                self.v += 1.5 * dt;
+                if self.v >= 5.5 {
+                    self.v = 5.5;
+                    self.phase = LeadPhase::Cruise;
+                    self.phase_t = 3.0;
+                }
+            }
+            LeadPhase::Cruise => {
+                self.phase_t -= dt;
+                if self.phase_t <= 0.0 {
+                    self.phase = LeadPhase::Brake;
+                }
+            }
+            LeadPhase::Brake => {
+                self.v -= 2.0 * dt;
+                if self.v <= 0.0 {
+                    self.v = 0.0;
+                    self.cycles += 1;
+                    self.phase = LeadPhase::Wait;
+                    self.phase_t = 3.0;
+                }
+            }
+            LeadPhase::Wait => {
+                self.phase_t -= dt;
+                if self.phase_t <= 0.0 && self.cycles < TRAFFIC_CYCLES {
+                    self.phase = LeadPhase::Accelerate;
+                }
+            }
+        }
+        self.x += self.v * dt;
+    }
+
+    pub fn done(&self) -> bool {
+        self.cycles >= TRAFFIC_CYCLES
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LessonId {
@@ -14,10 +93,14 @@ pub enum LessonId {
     FreeLoop,
     HillHandbrake,
     HillNoHandbrake,
+    Parking,
+    Traffic,
+    StopSign,
+    HillStopSign,
 }
 
 impl LessonId {
-    pub const ALL: [LessonId; 8] = [
+    pub const ALL: [LessonId; 12] = [
         LessonId::BitePoint,
         LessonId::PullAway,
         LessonId::Stop,
@@ -26,6 +109,10 @@ impl LessonId {
         LessonId::FreeLoop,
         LessonId::HillHandbrake,
         LessonId::HillNoHandbrake,
+        LessonId::Parking,
+        LessonId::Traffic,
+        LessonId::StopSign,
+        LessonId::HillStopSign,
     ];
 
     pub fn title(self) -> &'static str {
@@ -38,6 +125,10 @@ impl LessonId {
             LessonId::FreeLoop => "6. Drive 500 m",
             LessonId::HillHandbrake => "7. Hill start (handbrake)",
             LessonId::HillNoHandbrake => "8. Hill start (foot brake)",
+            LessonId::Parking => "9. Car-park creep",
+            LessonId::Traffic => "10. Stop-and-go traffic",
+            LessonId::StopSign => "11. Stop sign and turn",
+            LessonId::HillStopSign => "12. Stop sign on a hill",
         }
     }
 
@@ -77,11 +168,39 @@ impl LessonId {
                  move your foot from brake to gas quickly while lifting to the bite point. \
                  Drive 20 m rolling back less than half a metre."
             }
+            LessonId::Parking => {
+                "Creep into the marked space about 19 m ahead and stop inside it. Stay under \
+                 10 km/h: slip the clutch at the bite point and cover the brake."
+            }
+            LessonId::Traffic => {
+                "Follow the car in front as it stops and starts four times. Don't get closer \
+                 than a metre, don't fall more than 40 m behind, and don't stall."
+            }
+            LessonId::StopSign => {
+                "Stop sign ahead. Brake, clutch in before the revs drop, and come to a full \
+                 stop at the line. Then select 1st, pull away and turn left."
+            }
+            LessonId::HillStopSign => {
+                "Stop sign on an uphill. Stop fully at the line, then do a hill start and \
+                 drive 20 m on, rolling back less than half a metre."
+            }
         }
     }
 
     pub fn is_hill(self) -> bool {
-        matches!(self, LessonId::HillHandbrake | LessonId::HillNoHandbrake)
+        matches!(
+            self,
+            LessonId::HillHandbrake | LessonId::HillNoHandbrake | LessonId::HillStopSign
+        )
+    }
+
+    /// Where the stop line is, for lessons that have one.
+    pub fn stop_line(self) -> Option<f32> {
+        match self {
+            LessonId::StopSign => Some(STOP_LINE),
+            LessonId::HillStopSign => Some(HILL_STOP_LINE),
+            _ => None,
+        }
     }
 }
 
@@ -97,6 +216,9 @@ pub struct LessonRun {
     pub id: LessonId,
     pub cup: Cup,
     pub grinds: u32,
+    /// Stop-and-go only: the car in front.
+    pub lead: Option<Lead>,
+    stopped_at_line: bool,
     timer_s: f32,
 }
 
@@ -106,6 +228,8 @@ impl LessonRun {
             id,
             cup: Cup::default(),
             grinds: 0,
+            lead: (id == LessonId::Traffic).then(Lead::new),
+            stopped_at_line: false,
             timer_s: 0.0,
         }
     }
@@ -128,6 +252,15 @@ impl LessonRun {
                 false
             }
             LessonId::HillHandbrake | LessonId::HillNoHandbrake => true,
+            LessonId::Parking | LessonId::Traffic => true,
+            LessonId::StopSign => {
+                sim.set_moving(2, 30.0 / 3.6);
+                false
+            }
+            LessonId::HillStopSign => {
+                sim.set_moving(2, 20.0 / 3.6);
+                false
+            }
         }
     }
 
@@ -143,9 +276,38 @@ impl LessonRun {
         if events.contains(&Event::Stalled) {
             return Outcome::Failed("Stalled. Clutch in, turn the key, try again.");
         }
+        if let Some(lead) = &mut self.lead {
+            lead.step(dt);
+            let gap = lead.x - s.x - CAR_LEN;
+            if gap < 1.0 {
+                return Outcome::Failed("Too close — you hit the car in front.");
+            }
+            if gap > 40.0 && !lead.done() {
+                return Outcome::Failed("Fell too far behind. Keep up with the traffic.");
+            }
+        }
+        let stopped = s.speed_mps.abs() < 0.05 && s.engine_running;
+        if let Some(line) = self.id.stop_line() {
+            if stopped && (line - 5.0..=line).contains(&s.x) {
+                self.stopped_at_line = true;
+            }
+            if !self.stopped_at_line && s.x > line {
+                return Outcome::Failed("Rolled through the stop sign. Stop fully at the line.");
+            }
+        }
+        if self.id == LessonId::Parking {
+            if s.speed_mps * 3.6 > 10.0 {
+                return Outcome::Failed(
+                    "Too fast for a car park. Slip the clutch, cover the brake.",
+                );
+            }
+            if s.x > PARK_BOX.1 + 2.0 {
+                return Outcome::Failed("Overshot the space.");
+            }
+        }
         let rollback_limit = match self.id {
             LessonId::HillHandbrake => Some(1.0),
-            LessonId::HillNoHandbrake => Some(0.5),
+            LessonId::HillNoHandbrake | LessonId::HillStopSign => Some(0.5),
             _ => None,
         };
         if rollback_limit.is_some_and(|max| s.rollback_m > max) {
@@ -172,9 +334,16 @@ impl LessonRun {
             LessonId::HillHandbrake | LessonId::HillNoHandbrake => {
                 s.x >= 20.0 && s.clutch_engagement >= 1.0
             }
+            LessonId::Parking => stopped && (PARK_BOX.0..=PARK_BOX.1).contains(&s.x),
+            LessonId::Traffic => self.lead.is_some_and(|l| l.done()) && stopped,
+            LessonId::StopSign => self.stopped_at_line && s.heading >= 1.3,
+            LessonId::HillStopSign => {
+                self.stopped_at_line && s.x >= HILL_STOP_LINE + 20.0 && s.clutch_engagement >= 1.0
+            }
         };
         let hold_s = match self.id {
             LessonId::BitePoint => 3.0,
+            LessonId::Parking | LessonId::Traffic => 1.0,
             LessonId::Stop | LessonId::Downshift => 2.0,
             _ => 0.0,
         };
@@ -225,6 +394,31 @@ impl LessonRun {
             }
             LessonId::HillNoHandbrake if c.handbrake > 0.0 => {
                 Some("Hold the foot brake, then release the handbrake.")
+            }
+            LessonId::Parking | LessonId::Traffic | LessonId::StopSign | LessonId::HillStopSign
+                if s.gear >= 1 && c.handbrake > 0.0 =>
+            {
+                Some("Release the handbrake.")
+            }
+            LessonId::Parking if s.speed_mps * 3.6 > 7.0 => {
+                Some("Slower: slip the clutch, cover the brake.")
+            }
+            LessonId::Traffic
+                if self.lead.is_some_and(|l| l.x - s.x - CAR_LEN < 4.0) && s.speed_mps > 0.5 =>
+            {
+                Some("Too close — clutch in and brake.")
+            }
+            LessonId::StopSign | LessonId::HillStopSign if self.stopped_at_line => {
+                Some(if self.id == LessonId::StopSign {
+                    "Good stop. Now pull away and turn left."
+                } else {
+                    "Good stop. Hill start: gas, bite, off the brake."
+                })
+            }
+            LessonId::StopSign | LessonId::HillStopSign
+                if self.id.stop_line().is_some_and(|l| s.x > l - 20.0) =>
+            {
+                Some("Stop sign: brake, clutch in, stop at the line.")
             }
             _ => None,
         }

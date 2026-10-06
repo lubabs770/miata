@@ -6,6 +6,8 @@ mod score;
 mod sim;
 
 pub use car::CarSpec;
-pub use lesson::{HILL_GRADE, LessonId, LessonRun, Outcome};
+pub use lesson::{
+    CAR_LEN, HILL_GRADE, HILL_STOP_LINE, Lead, LessonId, LessonRun, Outcome, PARK_BOX, STOP_LINE,
+};
 pub use score::{Cup, stars};
 pub use sim::{Controls, Env, Event, RPM_PER_RAD_S, SHIFT_CLUTCH, Sim, SimState, TransmissionMode};

@@ -263,3 +263,217 @@ fn foot_brake_hill_start_using_handbrake_fails() {
     let out = play(LessonId::HillNoHandbrake, 15.0, hill_start(false));
     assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
 }
+
+/// Pull away gently from a standstill in 1st (clutch already in).
+fn launch(sim: &Sim, since: f32, throttle: f32) -> Controls {
+    Controls {
+        clutch: (sim.bite_point() + 0.02 - since / 1.5 * 0.22).max(0.0),
+        throttle,
+        ..Default::default()
+    }
+}
+
+/// Brake pedal needed to stop within `d` metres (v² = 2ad).
+fn brake_for(sim: &Sim, d: f32) -> f32 {
+    let v = sim.state().speed_mps.max(0.0);
+    v * v / (2.0 * d.max(0.3)) * sim.car.mass_kg / sim.car.brake_force_n
+}
+
+/// Drive on `throttle` (or a launch from standstill) until braking to stop at
+/// `target` is needed, then brake with the clutch in below 15 km/h. Calls
+/// `after` with the time since the car stopped.
+fn stop_at_then(
+    target: f32,
+    throttle: f32,
+    after: impl Fn(f32, &Sim) -> Controls,
+) -> impl FnMut(f32, &Sim) -> Controls {
+    let mut stopped_at: Option<f32> = None;
+    let mut braking = false;
+    move |t, sim| {
+        let s = sim.state();
+        if let Some(t0) = stopped_at {
+            return after(t - t0, sim);
+        }
+        let brake = brake_for(sim, target - s.x);
+        // Once braking starts, keep braking: coasting in gear at walking pace stalls.
+        braking |= brake >= 0.15 || s.x >= target - 0.5;
+        if !braking {
+            return Controls {
+                throttle,
+                ..Default::default()
+            };
+        }
+        if s.speed_mps < 0.05 {
+            stopped_at = Some(t);
+        }
+        Controls {
+            clutch: if s.speed_mps * 3.6 < 15.0 { 1.0 } else { 0.0 },
+            // Rolling resistance and engine braking do some of the work.
+            brake: (brake - 0.03).clamp(0.0, 1.0),
+            ..Default::default()
+        }
+    }
+}
+
+#[test]
+fn parking_creep_into_the_box_passes() {
+    let target = (PARK_BOX.0 + PARK_BOX.1) / 2.0;
+    let out = play(LessonId::Parking, 40.0, |t, sim| {
+        let s = sim.state();
+        if t < 0.3 {
+            return Controls {
+                clutch: 1.0,
+                shift: Some(1),
+                ..Default::default()
+            };
+        }
+        let brake = brake_for(sim, target - s.x);
+        if brake > 0.1 || s.x > target {
+            return Controls {
+                clutch: 1.0,
+                brake: (brake + 0.1).min(1.0),
+                ..Default::default()
+            };
+        }
+        // Creep: slip the clutch at the bite, dip it when going too fast.
+        if s.speed_mps > 1.4 {
+            return Controls {
+                clutch: 1.0,
+                ..Default::default()
+            };
+        }
+        let creep = sim.bite_point() - 0.35 * sim.car.bite_width;
+        let clutch = creep.max(sim.bite_point() + 0.02 - (t - 0.3) / 1.5 * 0.1);
+        Controls {
+            clutch,
+            throttle: 0.15,
+            ..Default::default()
+        }
+    });
+    assert!(matches!(out, Outcome::Passed { .. }), "{out:?}");
+}
+
+#[test]
+fn parking_too_fast_fails() {
+    let mut d = Driver::new(2, 0.6);
+    let out = play(LessonId::Parking, 20.0, |t, sim| d.controls(t, sim));
+    assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
+}
+
+/// Follows the lead car in 1st: stops 3 m behind it, pulls away once it
+/// has moved off, and holds the gap with the gas.
+fn follower() -> impl FnMut(f32, &Sim, f32) -> Controls {
+    let mut launched_at: Option<f32> = None;
+    move |t, sim, gap| {
+        let s = sim.state();
+        if t < 0.3 {
+            return Controls {
+                clutch: 1.0,
+                shift: Some(1),
+                ..Default::default()
+            };
+        }
+        let brake = brake_for(sim, gap - 3.0);
+        if brake > 0.15 || gap < 4.0 {
+            launched_at = None;
+            return Controls {
+                clutch: 1.0,
+                brake: (brake + 0.2).min(1.0),
+                ..Default::default()
+            };
+        }
+        if s.speed_mps < 0.3 && launched_at.is_none() {
+            if gap < 10.0 {
+                return Controls {
+                    clutch: 1.0,
+                    brake: 0.3,
+                    ..Default::default()
+                };
+            }
+            launched_at = Some(t);
+        }
+        let since = t - launched_at.unwrap_or(t);
+        let mut c = launch(sim, since, ((gap - 7.0) * 0.05).clamp(0.25, 0.35));
+        if s.clutch_locked {
+            c.clutch = 0.0;
+        }
+        c
+    }
+}
+
+#[test]
+fn stop_and_go_traffic_passes() {
+    let mut sim = Sim::new(CarSpec::miata(), 3);
+    let mut run = LessonRun::new(LessonId::Traffic);
+    run.setup(&mut sim);
+    let mut drive = follower();
+    let mut out = Outcome::Running;
+    let mut t = 0.0;
+    while t < 90.0 && out == Outcome::Running {
+        let gap = run.lead.unwrap().x - sim.state().x - CAR_LEN;
+        let c = drive(t, &sim, gap);
+        let ev = sim.step(&c, run.env(), DT);
+        out = run.update(sim.state(), &c, &ev, DT);
+        t += DT;
+    }
+    assert!(matches!(out, Outcome::Passed { .. }), "{out:?} at t={t}");
+}
+
+#[test]
+fn ramming_the_car_in_front_fails() {
+    let mut d = Driver::new(2, 0.5);
+    let out = play(LessonId::Traffic, 30.0, |t, sim| d.controls(t, sim));
+    assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
+}
+
+#[test]
+fn stop_sign_then_left_turn_passes() {
+    let out = play(
+        LessonId::StopSign,
+        30.0,
+        stop_at_then(STOP_LINE - 2.0, 0.0, |dt, sim| {
+            if dt < 1.0 {
+                return Controls {
+                    clutch: 1.0,
+                    brake: 0.5,
+                    shift: Some(1),
+                    ..Default::default()
+                };
+            }
+            Controls {
+                steer: 1.0,
+                ..launch(sim, dt - 1.0, 0.25)
+            }
+        }),
+    );
+    assert!(matches!(out, Outcome::Passed { .. }), "{out:?}");
+}
+
+#[test]
+fn rolling_the_stop_sign_fails() {
+    let out = play(LessonId::StopSign, 15.0, |_, _| Controls {
+        throttle: 0.2,
+        ..Default::default()
+    });
+    assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
+}
+
+#[test]
+fn hill_stop_sign_then_hill_start_passes() {
+    let out = play(
+        LessonId::HillStopSign,
+        30.0,
+        stop_at_then(HILL_STOP_LINE - 2.0, 0.3, |dt, sim| {
+            if dt < 1.0 {
+                return Controls {
+                    clutch: 1.0,
+                    brake: 0.6,
+                    shift: Some(1),
+                    ..Default::default()
+                };
+            }
+            launch(sim, dt - 1.0, 0.5)
+        }),
+    );
+    assert!(matches!(out, Outcome::Passed { .. }), "{out:?}");
+}
