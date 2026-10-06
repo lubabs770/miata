@@ -36,7 +36,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: wasm
-      - run: cargo build --release -p game --target wasm32-unknown-unknown
+      - run: cargo build --profile web -p game --target wasm32-unknown-unknown
       - name: Match wasm-bindgen CLI to the locked crate
         id: wbg
         run: echo "version=$(cargo metadata --format-version 1 | jq -r '.packages[] | select(.name=="wasm-bindgen") | .version')" >> "$GITHUB_OUTPUT"
@@ -45,8 +45,8 @@ jobs:
           tool: wasm-bindgen@${{ steps.wbg.outputs.version }}
       - name: Bundle
         run: |
-          wasm-bindgen --no-typescript --target web --out-dir dist --out-name miata \
-            target/wasm32-unknown-unknown/release/miata.wasm
+          wasm-bindgen --no-typescript --target web --out-dir dist --out-name miata --remove-name-section --remove-producers-section \
+            target/wasm32-unknown-unknown/web/miata.wasm
           cp web/index.html dist/
       - uses: actions/upload-pages-artifact@v3
         with:
