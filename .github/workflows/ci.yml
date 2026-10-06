@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bevy Linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends g++ pkg-config libx11-dev \
+            libasound2-dev libudev-dev libxkbcommon-x11-0 libwayland-dev libxkbcommon-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: wasm
+      - run: cargo build --release -p game --target wasm32-unknown-unknown
+      - name: Match wasm-bindgen CLI to the locked crate
+        id: wbg
+        run: echo "version=$(cargo metadata --format-version 1 | jq -r '.packages[] | select(.name=="wasm-bindgen") | .version')" >> "$GITHUB_OUTPUT"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@${{ steps.wbg.outputs.version }}
+      - name: Bundle
+        run: |
+          wasm-bindgen --no-typescript --target web --out-dir dist --out-name miata \
+            target/wasm32-unknown-unknown/release/miata.wasm
+          cp web/index.html dist/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [check, web]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
