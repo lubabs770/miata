@@ -1,0 +1,51 @@
+# miata
+
+Learn to drive a manual transmission, in Rust. You sit in a low-poly NA Miata,
+find the bite point, pull away, shift and stop without stalling. When you can
+pass the lessons here, the sequence and timing carry over to a real car.
+
+**Play in the browser: https://lubabs770.github.io/miata/**
+
+> With a keyboard or gamepad this trains the sequence, the timing and reading
+> the revs and engine sound. The physical feel of a clutch pedal only carries
+> over with real pedals (wheel/pedal support is planned).
+
+## What's in it (Phase 1a)
+
+- A drivetrain model with an engine, a clutch that slips and locks, a 5-speed
+  gearbox and the car's motion. It stalls, grinds, over-revs and rolls back on
+  hills like a real car.
+- The bite point moves a little each session, so you learn to *feel* for it
+  rather than memorise it.
+- A coffee cup on the dash that spills if you drive jerkily.
+- Lessons: **1** find the bite point · **2** pull away · **3** stop without
+  stalling. Each is graded with 1–3 stars, plus free drive.
+- A procedural engine sound that follows rpm and load.
+
+Planned next: more cars, auto-clutch/paddle modes, more camera views, a
+rebinding screen, hill and traffic lessons, then real streets from
+OpenStreetMap. See the [design spec](docs/superpowers/specs/2026-10-06-miata-design.md).
+
+## Controls
+
+| | Keyboard | Gamepad |
+|---|---|---|
+| Gas | W | RT |
+| Brake | S | Left stick down |
+| Clutch | Left Shift (hold; lets up slowly) | LT |
+| Steer | A / D | Left stick |
+| Gears | 1–5, R, N | Right stick as an H-pattern, R3 = neutral |
+| Handbrake (toggle) | Space | X |
+| Ignition | I | Y |
+
+The engine only starts with the clutch in (or in neutral), as in most real cars.
+
+## Docs
+
+- [How the physics works](docs/physics.md): the clutch, stalling and tuning knobs
+- [Adding a car](docs/adding-a-car.md): cars are TOML files
+- [Development](docs/development.md): layout, tests, CI and deploys
+
+## License
+
+MIT
