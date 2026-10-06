@@ -5,8 +5,10 @@ use std::f32::consts::{FRAC_PI_2, PI};
 use bevy::prelude::*;
 use drivetrain::SimState;
 
+use leafwing_input_manager::prelude::*;
+
 use crate::driving::Drive;
-use crate::input::Pedals;
+use crate::input::{Action, Pedals};
 
 const ROAD_LEN: f32 = 4000.0;
 const TACH_MAX_RPM: f32 = 8000.0;
@@ -17,6 +19,49 @@ const STEER_WHEEL_TURNS: f32 = 1.5 * PI;
 
 #[derive(Component)]
 struct CarRig;
+#[derive(Component)]
+struct DriverCamera;
+/// Outside body, hidden in the cockpit view so it doesn't block the camera.
+#[derive(Component)]
+struct Body;
+
+#[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum View {
+    #[default]
+    Cockpit,
+    Hood,
+    Chase,
+    BirdsEye,
+}
+
+impl View {
+    fn next(self) -> Self {
+        match self {
+            View::Cockpit => View::Hood,
+            View::Hood => View::Chase,
+            View::Chase => View::BirdsEye,
+            View::BirdsEye => View::Cockpit,
+        }
+    }
+
+    /// Camera pose relative to the car (car faces -Z).
+    fn camera(self) -> Transform {
+        match self {
+            View::Cockpit => {
+                Transform::from_xyz(-0.35, 1.05, 0.0).with_rotation(Quat::from_rotation_x(-0.12))
+            }
+            View::Hood => {
+                Transform::from_xyz(0.0, 1.0, -1.3).with_rotation(Quat::from_rotation_x(-0.05))
+            }
+            View::Chase => {
+                Transform::from_xyz(0.0, 2.4, 6.5).looking_at(Vec3::new(0.0, 0.8, -4.0), Vec3::Y)
+            }
+            View::BirdsEye => {
+                Transform::from_xyz(0.0, 28.0, 6.0).looking_at(Vec3::new(0.0, 0.0, -4.0), Vec3::Y)
+            }
+        }
+    }
+}
 #[derive(Component)]
 struct TachNeedle;
 #[derive(Component)]
@@ -30,8 +75,9 @@ struct Coffee;
 
 pub fn plugin(app: &mut App) {
     app.insert_resource(ClearColor(Color::srgb(0.62, 0.78, 0.93)))
+        .init_resource::<View>()
         .add_systems(Startup, (spawn_world, spawn_car))
-        .add_systems(Update, (follow_sim, animate_cockpit));
+        .add_systems(Update, (follow_sim, animate_cockpit, switch_view));
 }
 
 fn mat(materials: &mut Assets<StandardMaterial>, c: Color) -> MeshMaterial3d<StandardMaterial> {
@@ -129,9 +175,13 @@ fn spawn_car(
         .spawn((CarRig, Transform::default(), Visibility::default()))
         .with_children(|car| {
             // US car: driver sits left of centre.
+            car.spawn((Camera3d::default(), DriverCamera, View::Cockpit.camera()));
             car.spawn((
-                Camera3d::default(),
-                Transform::from_xyz(-0.35, 1.05, 0.0).with_rotation(Quat::from_rotation_x(-0.12)),
+                Body,
+                Visibility::Hidden,
+                Mesh3d(meshes.add(Cuboid::new(1.68, 0.55, 3.95))),
+                red.clone(),
+                Transform::from_xyz(0.0, 0.5, -0.9),
             ));
             car.spawn((
                 Mesh3d(meshes.add(Cuboid::new(1.65, 0.12, 1.8))),
@@ -262,4 +312,36 @@ fn animate_cockpit(
     // Coffee surface tilts with acceleration.
     c.rotation = Quat::from_rotation_x((s.accel * 0.04).clamp(-0.4, 0.4));
     c.scale = if level <= 0.01 { Vec3::ZERO } else { Vec3::ONE };
+}
+
+fn switch_view(
+    actions: Single<&ActionState<Action>>,
+    mut view: ResMut<View>,
+    mut cam: Single<&mut Transform, With<DriverCamera>>,
+    mut body: Single<&mut Visibility, With<Body>>,
+) {
+    if !actions.just_pressed(&Action::CycleView) {
+        return;
+    }
+    *view = view.next();
+    **cam = view.camera();
+    **body = if *view == View::Cockpit {
+        Visibility::Hidden
+    } else {
+        Visibility::Inherited
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn views_cycle_back_to_cockpit() {
+        let mut v = View::Cockpit;
+        for _ in 0..4 {
+            v = v.next();
+        }
+        assert_eq!(v, View::Cockpit);
+    }
 }

@@ -37,6 +37,7 @@ OpenStreetMap. See the [design spec](docs/superpowers/specs/2026-10-06-miata-des
 | Gears | 1–5, R, N | Right stick as an H-pattern, R3 = neutral |
 | Handbrake (toggle) | Space | X |
 | Ignition | I | Y |
+| Camera view (cockpit / hood / chase / bird's-eye) | V | Select |
 
 The engine only starts with the clutch in (or in neutral), as in most real cars.
 

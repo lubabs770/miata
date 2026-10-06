@@ -39,6 +39,7 @@ pub enum Action {
     Neutral,
     Handbrake,
     Ignition,
+    CycleView,
 }
 
 impl Action {
@@ -53,6 +54,7 @@ impl Action {
         m.insert(Neutral, GamepadButton::RightThumb);
         m.insert(Handbrake, GamepadButton::West);
         m.insert(Ignition, GamepadButton::North);
+        m.insert(CycleView, GamepadButton::Select);
 
         m.insert(ThrottleKey, KeyCode::KeyW);
         m.insert(BrakeKey, KeyCode::KeyS);
@@ -68,6 +70,7 @@ impl Action {
             (Neutral, KeyCode::KeyN),
             (Handbrake, KeyCode::Space),
             (Ignition, KeyCode::KeyI),
+            (CycleView, KeyCode::KeyV),
         ] {
             m.insert(a, k);
         }

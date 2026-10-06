@@ -9,9 +9,9 @@ use crate::driving::Drive;
 use crate::input::Pedals;
 
 const KEYS: &str = "Keyboard: W gas · S brake · Left Shift clutch (hold; releases slowly) · A/D steer · \
-1–5 / R / N gears · Space handbrake · I ignition\n\
+1–5 / R / N gears · Space handbrake · I ignition · V view\n\
 Gamepad: RT gas · LT clutch · left stick steer, down = brake · right stick H-shifter · \
-R3 neutral · X handbrake · Y ignition";
+R3 neutral · X handbrake · Y ignition · Select view";
 
 pub fn plugin(app: &mut App) {
     app.add_systems(
