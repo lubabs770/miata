@@ -7,6 +7,7 @@ use leafwing_input_manager::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::controls_ui::ControlsUi;
+use crate::pedals::{PedalCal, raw_inputs};
 
 /// Keyboard pedal ramp rates, pedal travel per second.
 const KEY_PRESS_RATE: f32 = 4.0;
@@ -235,6 +236,8 @@ fn read_input(
     time: Res<Time>,
     mut p: ResMut<Pedals>,
     controls_ui: Res<ControlsUi>,
+    pads: Query<&Gamepad>,
+    cal: Res<PedalCal>,
 ) {
     if controls_ui.capturing() {
         // The press is for the controls screen, not the car.
@@ -285,13 +288,28 @@ fn read_input(
     .find(|(act, _)| a.just_pressed(act))
     .map(|(_, g)| g);
 
+    // A calibrated wheel/pedal set adds to (or, for steering, overrides) the pad.
+    let raw = raw_inputs(&pads);
+    let wheel = cal.read(|i| raw.get(&i).copied());
     p.controls = Controls {
-        clutch: a.button_value(&Action::Clutch).max(p.kb_clutch),
-        throttle: a.button_value(&Action::Throttle).max(p.kb_throttle),
-        brake: (-a.value(&Action::BrakeStick)).max(0.0).max(p.kb_brake),
+        clutch: a
+            .button_value(&Action::Clutch)
+            .max(p.kb_clutch)
+            .max(wheel.clutch.unwrap_or(0.0)),
+        throttle: a
+            .button_value(&Action::Throttle)
+            .max(p.kb_throttle)
+            .max(wheel.gas.unwrap_or(0.0)),
+        brake: (-a.value(&Action::BrakeStick))
+            .max(0.0)
+            .max(p.kb_brake)
+            .max(wheel.brake.unwrap_or(0.0)),
         handbrake: if p.handbrake_on { 1.0 } else { 0.0 },
         // Sim steer is +left; the A/D axis and stick are +right.
-        steer: -a.value(&Action::Steer),
+        steer: -wheel
+            .steer
+            .filter(|s| s.abs() > 0.02)
+            .unwrap_or(a.value(&Action::Steer)),
         shift: key_shift.or(stick_shift),
         ignition: a.just_pressed(&Action::Ignition),
         sequential: a.just_pressed(&Action::ShiftUp) as i8

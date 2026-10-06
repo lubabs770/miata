@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::driving::Drive;
 use crate::input::Bindings;
+use crate::pedals::PedalCal;
 
 const KEY: &str = "miata-progress";
 
@@ -18,6 +19,7 @@ pub struct Progress {
     pub car: usize,
     pub mode: Mode,
     pub bindings: Bindings,
+    pub pedals: PedalCal,
 }
 
 /// Serializable mirror of `TransmissionMode` (the sim crate stays serde-free).
@@ -85,17 +87,27 @@ fn restore_choices(
     progress: Res<Progress>,
     mut drive: ResMut<Drive>,
     mut bindings: ResMut<Bindings>,
+    mut pedals: ResMut<PedalCal>,
 ) {
     *bindings = progress.bindings.clone();
+    *pedals = progress.pedals.clone();
     if progress.car < drive.cars.len() {
         drive.car = progress.car;
     }
     drive.mode = progress.mode.into();
 }
 
-fn track(drive: Res<Drive>, bindings: Res<Bindings>, mut progress: ResMut<Progress>) {
+fn track(
+    drive: Res<Drive>,
+    bindings: Res<Bindings>,
+    pedals: Res<PedalCal>,
+    mut progress: ResMut<Progress>,
+) {
     if progress.bindings != *bindings {
         progress.bindings = bindings.clone();
+    }
+    if progress.pedals != *pedals {
+        progress.pedals = pedals.clone();
     }
     if let (Some(run), Outcome::Passed { stars }) = (&drive.lesson, drive.outcome)
         && progress.stars(run.id) < stars

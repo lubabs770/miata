@@ -5,6 +5,7 @@ use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
 use crate::AppState;
 use crate::input::{Action, BINDING_ROWS, Bindings, STEER_KEYS};
+use crate::pedals::Wizard;
 
 #[derive(Resource, Default)]
 pub struct ControlsUi {
@@ -70,6 +71,7 @@ fn window(
     mut contexts: EguiContexts,
     mut ui_state: ResMut<ControlsUi>,
     mut bindings: ResMut<Bindings>,
+    mut wizard: ResMut<Wizard>,
 ) -> Result {
     if !ui_state.open {
         return Ok(());
@@ -124,10 +126,15 @@ fn window(
             if let Some(note) = &ui_state.note {
                 ui.colored_label(egui::Color32::YELLOW, note);
             }
-            if ui.button("Reset to defaults").clicked() {
-                *bindings = Bindings::default();
-                ui_state.note = Some("Defaults restored.".into());
-            }
+            ui.horizontal(|ui| {
+                if ui.button("Reset to defaults").clicked() {
+                    *bindings = Bindings::default();
+                    ui_state.note = Some("Defaults restored.".into());
+                }
+                if ui.button("Wheel & pedals…").clicked() {
+                    wizard.open = true;
+                }
+            });
         });
     if !open {
         ui_state.open = false;

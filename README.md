@@ -46,7 +46,7 @@ pass the lessons here, the sequence and timing carry over to a real car.
 - Progress saving: best stars per lesson, plus your car and gearbox choices
   (browser storage on the web, a JSON file on desktop).
 
-Planned next: wheel and pedal calibration, then real streets from OpenStreetMap. See the [design spec](docs/superpowers/specs/2026-10-06-miata-design.md).
+Planned next: a free-drive town, more engine sounds, then real streets from OpenStreetMap. See the [design spec](docs/superpowers/specs/2026-10-06-miata-design.md).
 
 ## Controls
 
@@ -67,6 +67,11 @@ The engine only starts with the clutch in (or in neutral), as in most real cars.
 Every key and gamepad button can be rebound in **Lessons → Controls…**. Click
 a binding and press the new key; if it's already taken, the two actions swap.
 Bindings are saved with your progress.
+
+**Steering wheel and pedals:** Controls… → **Wheel & pedals…** runs a short
+calibration. You press each pedal and turn the wheel, and it learns which axis
+is which and its range, including inverted pedals. An optional progressive
+curve gives finer gas and brake control.
 
 ## Docs
 

@@ -4,6 +4,7 @@ mod controls_ui;
 mod driving;
 mod hud;
 mod input;
+mod pedals;
 mod save;
 
 use bevy::prelude::*;
@@ -39,6 +40,7 @@ fn main() {
             audio::plugin,
             save::plugin,
             controls_ui::plugin,
+            pedals::plugin,
         ))
         .run();
 }
