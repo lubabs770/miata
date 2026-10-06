@@ -16,10 +16,27 @@ const MIN_TRAVEL: f32 = 0.3;
 /// Ignore the first bit of pedal travel (sensor noise at rest).
 const DEADZONE: f32 = 0.03;
 
+/// Serializable mirror of Bevy's `GamepadInput` (whose own serde support
+/// covers the axis and button types but not the wrapper).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum PadInput {
+    Axis(GamepadAxis),
+    Button(GamepadButton),
+}
+
+impl From<GamepadInput> for PadInput {
+    fn from(i: GamepadInput) -> Self {
+        match i {
+            GamepadInput::Axis(a) => PadInput::Axis(a),
+            GamepadInput::Button(b) => PadInput::Button(b),
+        }
+    }
+}
+
 /// One pedal: `rest` maps to 0, `full` to 1, whichever way round they are.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
 pub struct AxisCal {
-    pub input: GamepadInput,
+    pub input: PadInput,
     pub rest: f32,
     pub full: f32,
 }
@@ -34,7 +51,7 @@ impl AxisCal {
 /// Steering: `left` maps to -1, `right` to +1.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
 pub struct SteerCal {
-    pub input: GamepadInput,
+    pub input: PadInput,
     pub left: f32,
     pub right: f32,
 }
@@ -68,7 +85,7 @@ pub struct Readings {
 }
 
 impl PedalCal {
-    pub fn read(&self, raw: impl Fn(GamepadInput) -> Option<f32>) -> Readings {
+    pub fn read(&self, raw: impl Fn(PadInput) -> Option<f32>) -> Readings {
         let curve = |v: f32| if self.progressive { v * v } else { v };
         let pedal = |c: &Option<AxisCal>| c.and_then(|c| raw(c.input).map(|r| c.value(r)));
         Readings {
@@ -83,10 +100,10 @@ impl PedalCal {
 /// The input that moved furthest from `baseline` (ignoring `taken` ones),
 /// with its current value.
 fn moved_most(
-    baseline: &HashMap<GamepadInput, f32>,
-    now: &HashMap<GamepadInput, f32>,
-    taken: &[GamepadInput],
-) -> Option<(GamepadInput, f32)> {
+    baseline: &HashMap<PadInput, f32>,
+    now: &HashMap<PadInput, f32>,
+    taken: &[PadInput],
+) -> Option<(PadInput, f32)> {
     now.iter()
         .filter(|(i, _)| !taken.contains(i))
         .map(|(i, v)| (*i, *v, (v - baseline.get(i).copied().unwrap_or(0.0)).abs()))
@@ -121,9 +138,9 @@ impl Step {
 pub struct Wizard {
     pub open: bool,
     step: Option<Step>,
-    baseline: HashMap<GamepadInput, f32>,
+    baseline: HashMap<PadInput, f32>,
     draft: PedalCal,
-    steer_input: Option<(GamepadInput, f32)>,
+    steer_input: Option<(PadInput, f32)>,
     note: Option<&'static str>,
 }
 
@@ -137,13 +154,13 @@ pub fn plugin(app: &mut App) {
 }
 
 /// All analog inputs on the first connected pad.
-pub fn raw_inputs(pads: &Query<&Gamepad>) -> HashMap<GamepadInput, f32> {
+pub fn raw_inputs(pads: &Query<&Gamepad>) -> HashMap<PadInput, f32> {
     pads.iter()
         .next()
         .map(|p| {
             p.analog()
                 .all_axes_and_values()
-                .map(|(i, v)| (*i, v))
+                .map(|(i, v)| ((*i).into(), v))
                 .collect()
         })
         .unwrap_or_default()
@@ -241,7 +258,7 @@ fn advance(
     wiz: &mut Wizard,
     cal: &mut PedalCal,
     step: Step,
-    now: &HashMap<GamepadInput, f32>,
+    now: &HashMap<PadInput, f32>,
     skip: bool,
 ) {
     let taken: Vec<_> = [wiz.draft.clutch, wiz.draft.brake, wiz.draft.gas]
@@ -309,7 +326,7 @@ mod tests {
     fn inverted_pedal_maps_rest_to_zero_and_floor_to_one() {
         // Many wheels report a released pedal as +1 and floored as -1.
         let c = AxisCal {
-            input: GamepadInput::Axis(GamepadAxis::LeftZ),
+            input: PadInput::Axis(GamepadAxis::LeftZ),
             rest: 1.0,
             full: -1.0,
         };
@@ -322,7 +339,7 @@ mod tests {
     #[test]
     fn steering_maps_left_and_right_to_minus_and_plus_one() {
         let s = SteerCal {
-            input: GamepadInput::Axis(GamepadAxis::LeftStickX),
+            input: PadInput::Axis(GamepadAxis::LeftStickX),
             left: -0.9,
             right: 0.9,
         };
@@ -333,8 +350,8 @@ mod tests {
 
     #[test]
     fn picks_the_input_that_moved_most() {
-        let z = GamepadInput::Axis(GamepadAxis::LeftZ);
-        let x = GamepadInput::Axis(GamepadAxis::LeftStickX);
+        let z = PadInput::Axis(GamepadAxis::LeftZ);
+        let x = PadInput::Axis(GamepadAxis::LeftStickX);
         let base = HashMap::from([(z, 1.0), (x, 0.0)]);
         let now = HashMap::from([(z, -0.95), (x, 0.1)]);
         assert_eq!(moved_most(&base, &now, &[]), Some((z, -0.95)));
@@ -348,7 +365,7 @@ mod tests {
 
     #[test]
     fn progressive_curve_applies_to_gas_and_brake_only() {
-        let z = GamepadInput::Axis(GamepadAxis::LeftZ);
+        let z = PadInput::Axis(GamepadAxis::LeftZ);
         let cal = AxisCal {
             input: z,
             rest: 0.0,
