@@ -167,18 +167,16 @@ fn upshift_to_third_passes() {
 
 #[test]
 fn downshift_to_second_passes() {
-    let mut braking_done_at = None;
+    let mut braked_at: Option<f32> = None;
     let out = play(LessonId::Downshift, 15.0, |t, sim| {
-        let kmh = sim.state().speed_mps * 3.6;
-        let done = *braking_done_at.get_or_insert_with(|| if kmh < 27.0 { Some(t) } else { None });
-        match done {
-            None => {
-                braking_done_at = None;
-                Controls {
-                    brake: 0.3,
-                    ..Default::default()
-                }
-            }
+        if braked_at.is_none() && sim.state().speed_mps * 3.6 < 27.0 {
+            braked_at = Some(t);
+        }
+        match braked_at {
+            None => Controls {
+                brake: 0.3,
+                ..Default::default()
+            },
             Some(t0) if t - t0 < 0.3 => Controls {
                 clutch: 1.0,
                 shift: Some(2),
