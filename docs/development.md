@@ -45,3 +45,20 @@ To watch the latest run:
 ```bash
 gh run watch --exit-status $(gh run list --limit 1 --json databaseId -q '.[0].databaseId')
 ```
+
+## Releases
+
+`.github/workflows/release.yml` builds the desktop apps when you push a
+`v*` tag:
+
+```bash
+git tag v0.1.0 && git push --tags
+```
+
+- **macOS:** a universal (Apple Silicon and Intel) `.app`, zipped. It's
+  unsigned, so open it the first time with right-click → Open.
+- **Linux:** an x86_64 binary in a `.tar.gz`. It needs ALSA and udev, which
+  most desktops already have.
+
+Both are attached to a GitHub Release with generated notes. To test-build
+without releasing, run the workflow manually with `gh workflow run release.yml`.
