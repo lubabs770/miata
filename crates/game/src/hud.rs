@@ -2,16 +2,16 @@
 
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
-use drivetrain::{LessonId, Outcome};
+use drivetrain::{LessonId, Outcome, TransmissionMode};
 
 use crate::AppState;
 use crate::driving::Drive;
 use crate::input::Pedals;
 
 const KEYS: &str = "Keyboard: W gas · S brake · Left Shift clutch (hold; releases slowly) · A/D steer · \
-1–5 / R / N gears · Space handbrake · I ignition · V view\n\
+1–5 / R / N gears · Space handbrake · I ignition · V view · Q/E paddles\n\
 Gamepad: RT gas · LT clutch · left stick steer, down = brake · right stick H-shifter · \
-R3 neutral · X handbrake · Y ignition · Select view";
+R3 neutral · X handbrake · Y ignition · Select view · LB/RB paddles";
 
 pub fn plugin(app: &mut App) {
     app.add_systems(
@@ -135,6 +135,7 @@ fn lesson_panel(
     let seed = time.elapsed().as_nanos() as u64;
     let mut start: Option<Option<LessonId>> = None;
     let mut car = drive.car;
+    let mut mode = drive.mode;
     egui::Window::new("Lessons")
         .anchor(egui::Align2::RIGHT_TOP, [-12.0, 12.0])
         .resizable(false)
@@ -144,6 +145,17 @@ fn lesson_panel(
                 .show_ui(ui, |ui| {
                     for (i, c) in drive.cars.iter().enumerate() {
                         ui.selectable_value(&mut car, i, &c.name);
+                    }
+                });
+            egui::ComboBox::from_label("free-drive gearbox")
+                .selected_text(mode_name(mode))
+                .show_ui(ui, |ui| {
+                    for m in [
+                        TransmissionMode::Manual,
+                        TransmissionMode::AutoClutch,
+                        TransmissionMode::Paddles,
+                    ] {
+                        ui.selectable_value(&mut mode, m, mode_name(m));
                     }
                 });
             ui.separator();
@@ -195,6 +207,10 @@ fn lesson_panel(
             start = drive.lesson.as_ref().map(|l| Some(l.id));
         }
     }
+    if mode != drive.mode {
+        drive.mode = mode;
+        start = start.or(Some(None));
+    }
     if car != drive.car {
         // A new car restarts whatever you were doing in it.
         drive.car = car;
@@ -204,4 +220,12 @@ fn lesson_panel(
         drive.start(choice, seed, &mut pedals);
     }
     Ok(())
+}
+
+fn mode_name(m: TransmissionMode) -> &'static str {
+    match m {
+        TransmissionMode::Manual => "Manual (you work the clutch)",
+        TransmissionMode::AutoClutch => "Auto-clutch (H-pattern, no clutch)",
+        TransmissionMode::Paddles => "Paddles (+/-)",
+    }
 }

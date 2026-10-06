@@ -1,7 +1,7 @@
 //! Owns the simulation and the active lesson; steps them once per frame.
 
 use bevy::prelude::*;
-use drivetrain::{CarSpec, Cup, Event, LessonId, LessonRun, Outcome, Sim};
+use drivetrain::{CarSpec, Cup, Event, LessonId, LessonRun, Outcome, Sim, TransmissionMode};
 
 use crate::AppState;
 use crate::input::Pedals;
@@ -19,6 +19,8 @@ pub struct Drive {
     /// Cup used in free drive (lessons keep their own).
     pub free_cup: Cup,
     pub last_events: Vec<Event>,
+    /// Free-drive transmission mode. Lessons 1–3 are always Manual.
+    pub mode: TransmissionMode,
 }
 
 impl Drive {
@@ -32,6 +34,7 @@ impl Drive {
             hint: None,
             free_cup: Cup::default(),
             last_events: Vec::new(),
+            mode: TransmissionMode::Manual,
         }
     }
 
@@ -41,7 +44,12 @@ impl Drive {
 
     /// Fresh car and attempt. `seed` varies the bite point.
     pub fn start(&mut self, lesson: Option<LessonId>, seed: u64, pedals: &mut Pedals) {
+        let mode = self.mode;
         *self = Self::new(std::mem::take(&mut self.cars), self.car, seed);
+        self.mode = mode;
+        if lesson.is_none() {
+            self.sim.set_mode(mode);
+        }
         if let Some(id) = lesson {
             let run = LessonRun::new(id);
             pedals.handbrake_on = run.setup(&mut self.sim);

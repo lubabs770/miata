@@ -43,6 +43,20 @@ simulate at frame rate.
   `Event::OverRev`. In manual mode the shift still happens; that's the "money
   shift".
 
+## Auto-clutch and paddle modes
+
+`Sim::set_mode(TransmissionMode::AutoClutch | Paddles)` takes the clutch
+pedal away from the player:
+
+- **Engagement follows rpm.** The clutch is open below 92% of idle and fully
+  engaged at idle + 250 rpm, plus up to 2000 rpm more with throttle (launch
+  rpm). The car creeps like a dual-clutch car and can't stall.
+- **Gear changes:** the computer holds the clutch open for 0.2 s.
+- **Refusals:** a downshift that would over-rev, or reverse while moving,
+  gives `Event::ShiftRefused` and the gear stays put.
+- **Sequential shifts:** `Controls::sequential` (+1/−1) steps through the
+  gears 1 to top. Manual mode ignores it.
+
 ## Car
 
 - **Forces:** the car moves under drive force minus grade × weight minus

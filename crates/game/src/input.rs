@@ -40,6 +40,9 @@ pub enum Action {
     Handbrake,
     Ignition,
     CycleView,
+    /// Paddles / sequential lever (auto-clutch modes only).
+    ShiftUp,
+    ShiftDown,
 }
 
 impl Action {
@@ -55,6 +58,8 @@ impl Action {
         m.insert(Handbrake, GamepadButton::West);
         m.insert(Ignition, GamepadButton::North);
         m.insert(CycleView, GamepadButton::Select);
+        m.insert(ShiftUp, GamepadButton::RightTrigger);
+        m.insert(ShiftDown, GamepadButton::LeftTrigger);
 
         m.insert(ThrottleKey, KeyCode::KeyW);
         m.insert(BrakeKey, KeyCode::KeyS);
@@ -71,6 +76,8 @@ impl Action {
             (Handbrake, KeyCode::Space),
             (Ignition, KeyCode::KeyI),
             (CycleView, KeyCode::KeyV),
+            (ShiftUp, KeyCode::KeyE),
+            (ShiftDown, KeyCode::KeyQ),
         ] {
             m.insert(a, k);
         }
@@ -178,6 +185,8 @@ fn read_input(a: Single<&ActionState<Action>>, time: Res<Time>, mut p: ResMut<Pe
         steer: -a.value(&Action::Steer),
         shift: key_shift.or(stick_shift),
         ignition: a.just_pressed(&Action::Ignition),
+        sequential: a.just_pressed(&Action::ShiftUp) as i8
+            - a.just_pressed(&Action::ShiftDown) as i8,
     };
 }
 

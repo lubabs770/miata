@@ -9,6 +9,26 @@ pub const SHIFT_CLUTCH: f32 = 0.85;
 /// Reverse only engages below this speed (~2 km/h).
 const REVERSE_MAX_MPS: f32 = 0.56;
 const JERK_SMOOTHING_S: f32 = 0.05;
+/// Auto modes hold the clutch open this long while a gear changes.
+const AUTO_SHIFT_S: f32 = 0.2;
+
+/// Who works the clutch. Any car can use any mode.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TransmissionMode {
+    /// Player's clutch pedal and H-pattern.
+    #[default]
+    Manual,
+    /// Computer clutch; player picks gears (H-pattern or sequential).
+    AutoClutch,
+    /// Computer clutch; +/- paddles, like a dual-clutch car in manual mode.
+    Paddles,
+}
+
+impl TransmissionMode {
+    pub fn auto_clutch(self) -> bool {
+        self != TransmissionMode::Manual
+    }
+}
 
 /// One frame of driver input. Pedals 0..1 (1 = floored), steer -1..1.
 #[derive(Debug, Clone, Copy, Default)]
@@ -22,6 +42,8 @@ pub struct Controls {
     pub shift: Option<i8>,
     /// Key turned this frame.
     pub ignition: bool,
+    /// Sequential shift this frame: +1 up, -1 down. Ignored in Manual mode.
+    pub sequential: i8,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -37,6 +59,8 @@ pub enum Event {
     Grind,
     OverRev,
     Shifted(i8),
+    /// Auto modes: the computer refused a shift (over-rev, or reverse while moving).
+    ShiftRefused,
 }
 
 /// Read-only snapshot for the game, lessons and scoring.
@@ -64,6 +88,9 @@ pub struct SimState {
 
 pub struct Sim {
     pub car: CarSpec,
+    mode: TransmissionMode,
+    /// Auto modes: time left with the clutch held open for a gear change.
+    shift_timer: f32,
     bite: f32,
     we: f32,
     v: f32,
@@ -84,6 +111,8 @@ impl Sim {
         };
         Self {
             car,
+            mode: TransmissionMode::Manual,
+            shift_timer: 0.0,
             bite,
             we,
             v: 0.0,
@@ -98,6 +127,14 @@ impl Sim {
 
     pub fn bite_point(&self) -> f32 {
         self.bite
+    }
+
+    pub fn mode(&self) -> TransmissionMode {
+        self.mode
+    }
+
+    pub fn set_mode(&mut self, mode: TransmissionMode) {
+        self.mode = mode;
     }
 
     /// Lesson setup: put the car in `gear` at `speed_mps`. When moving, the
@@ -122,14 +159,17 @@ impl Sim {
         }
         if c.ignition
             && !self.state.engine_running
-            && (self.state.gear == 0 || c.clutch >= SHIFT_CLUTCH)
+            && (self.state.gear == 0 || c.clutch >= SHIFT_CLUTCH || self.mode.auto_clutch())
         {
             self.state.engine_running = true;
             self.we = self.car.idle_rpm / RPM_PER_RAD_S;
             self.locked = false;
             ev.push(Event::Started);
         }
-        if let Some(g) = c.shift.filter(|&g| g != self.state.gear) {
+        let sequential = (self.mode.auto_clutch() && c.sequential != 0).then(|| {
+            (self.state.gear.max(0) + c.sequential.signum()).clamp(1, self.car.top_gear())
+        });
+        if let Some(g) = c.shift.or(sequential).filter(|&g| g != self.state.gear) {
             self.try_shift(g, c.clutch, &mut ev);
         }
 
@@ -162,12 +202,23 @@ impl Sim {
             return;
         }
         let Some(k) = self.k(g) else { return };
-        if clutch < SHIFT_CLUTCH || (g == -1 && self.v.abs() > REVERSE_MAX_MPS) {
-            ev.push(Event::Grind);
-            return;
-        }
-        if (k * self.v * RPM_PER_RAD_S).abs() > self.car.limiter_rpm {
-            ev.push(Event::OverRev);
+        let reverse_while_moving = g == -1 && self.v.abs() > REVERSE_MAX_MPS;
+        let over_rev = (k * self.v * RPM_PER_RAD_S).abs() > self.car.limiter_rpm;
+        if self.mode.auto_clutch() {
+            // The computer protects the engine and gearbox.
+            if reverse_while_moving || over_rev {
+                ev.push(Event::ShiftRefused);
+                return;
+            }
+            self.shift_timer = AUTO_SHIFT_S;
+        } else {
+            if clutch < SHIFT_CLUTCH || reverse_while_moving {
+                ev.push(Event::Grind);
+                return;
+            }
+            if over_rev {
+                ev.push(Event::OverRev);
+            }
         }
         self.state.gear = g;
         self.locked = false;
@@ -206,7 +257,16 @@ impl Sim {
             + c.handbrake * car.handbrake_force_n
             + car.rolling_c * m * G * theta.cos();
 
-        let engagement = ((self.bite - c.clutch) / car.bite_width).clamp(0.0, 1.0);
+        let engagement = if self.mode.auto_clutch() {
+            self.shift_timer = (self.shift_timer - h).max(0.0);
+            if self.shift_timer > 0.0 {
+                0.0
+            } else {
+                auto_engagement(car, rpm, c.throttle)
+            }
+        } else {
+            ((self.bite - c.clutch) / car.bite_width).clamp(0.0, 1.0)
+        };
         // Progressive: the first part of the band grabs gently, like a real clutch.
         let cap = engagement * engagement * car.clutch_capacity_nm;
 
@@ -276,6 +336,15 @@ impl Sim {
         self.state.speed_mps = self.v;
         self.state.clutch_locked = self.locked;
     }
+}
+
+/// Computer clutch: engage more as the engine revs above idle, open up as
+/// it sags towards stalling. Throttle raises the launch rpm, like a
+/// dual-clutch car's launch logic.
+fn auto_engagement(car: &CarSpec, rpm: f32, throttle: f32) -> f32 {
+    let open_below = car.idle_rpm * 0.92;
+    let full_at = car.idle_rpm + 250.0 + throttle * 2000.0;
+    ((rpm - open_below) / (full_at - open_below)).clamp(0.0, 1.0)
 }
 
 /// Acceleration from net force `f` with up to `fb` of brake/rolling force

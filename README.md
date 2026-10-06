@@ -10,7 +10,7 @@ pass the lessons here, the sequence and timing carry over to a real car.
 > the revs and engine sound. The physical feel of a clutch pedal only carries
 > over with real pedals (wheel/pedal support is planned).
 
-## What's in it (Phase 1a)
+## What's in it
 
 - A drivetrain model with an engine, a clutch that slips and locks, a 5-speed
   gearbox and the car's motion. It stalls, grinds, over-revs and rolls back on
@@ -21,10 +21,15 @@ pass the lessons here, the sequence and timing carry over to a real car.
 - Lessons: **1** find the bite point · **2** pull away · **3** stop without
   stalling. Each is graded with 1–3 stars, plus free drive.
 - A procedural engine sound that follows rpm and load.
+- Three cars: the NA Miata, a turbo hot hatch, and an old pickup that stalls
+  easily.
+- Gearbox modes for free drive: **Manual**, **Auto-clutch** (you pick gears and
+  the computer works the clutch) and **Paddles** (+/−, like a modern
+  dual-clutch car).
+- Cockpit, hood, chase and bird's-eye camera views.
 
-Planned next: more cars, auto-clutch/paddle modes, more camera views, a
-rebinding screen, hill and traffic lessons, then real streets from
-OpenStreetMap. See the [design spec](docs/superpowers/specs/2026-10-06-miata-design.md).
+Planned next: a rebinding screen, wheel and pedal calibration, hill and
+traffic lessons, a replay graph, then real streets from OpenStreetMap. See the [design spec](docs/superpowers/specs/2026-10-06-miata-design.md).
 
 ## Controls
 
@@ -38,6 +43,7 @@ OpenStreetMap. See the [design spec](docs/superpowers/specs/2026-10-06-miata-des
 | Handbrake (toggle) | Space | X |
 | Ignition | I | Y |
 | Camera view (cockpit / hood / chase / bird's-eye) | V | Select |
+| Paddle shift down / up (auto-clutch and paddle modes) | Q / E | LB / RB |
 
 The engine only starts with the clutch in (or in neutral), as in most real cars.
 
