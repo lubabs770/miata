@@ -3,6 +3,7 @@ mod cockpit;
 mod driving;
 mod hud;
 mod input;
+mod save;
 
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
@@ -35,6 +36,7 @@ fn main() {
             cockpit::plugin,
             hud::plugin,
             audio::plugin,
+            save::plugin,
         ))
         .run();
 }

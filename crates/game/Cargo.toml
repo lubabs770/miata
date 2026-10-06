@@ -14,7 +14,10 @@ bevy = "0.19.1"
 bevy_egui = "0.42"
 # Must track the egui version bevy_egui uses (0.36).
 egui_plot = "0.37"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 leafwing-input-manager = "0.21"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 bevy = { version = "0.19.1", features = ["web"] }
+web-sys = { version = "0.3", features = ["Window", "Storage"] }

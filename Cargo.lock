@@ -2878,6 +2878,9 @@ dependencies = [
  "drivetrain",
  "egui_plot",
  "leafwing-input-manager",
+ "serde",
+ "serde_json",
+ "web-sys",
 ]
 
 [[package]]

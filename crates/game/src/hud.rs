@@ -8,6 +8,7 @@ use egui_plot::{Legend, Line, Plot, PlotPoints, VLine};
 use crate::AppState;
 use crate::driving::{Drive, Sample, Trace};
 use crate::input::Pedals;
+use crate::save::Progress;
 
 const KEYS: &str = "Keyboard: W gas · S brake · Left Shift clutch (hold; releases slowly) · A/D steer · \
 1–5 / R / N gears · Space handbrake · I ignition · V view · Q/E paddles\n\
@@ -132,6 +133,7 @@ fn lesson_panel(
     mut drive: ResMut<Drive>,
     mut pedals: ResMut<Pedals>,
     time: Res<Time>,
+    progress: Res<Progress>,
 ) -> Result {
     let seed = time.elapsed().as_nanos() as u64;
     let mut start: Option<Option<LessonId>> = None;
@@ -164,7 +166,7 @@ fn lesson_panel(
                 if ui
                     .selectable_label(
                         drive.lesson.as_ref().is_some_and(|l| l.id == id),
-                        id.title(),
+                        format!("{}  {}", id.title(), star_text(progress.stars(id))),
                     )
                     .clicked()
                 {
@@ -183,10 +185,7 @@ fn lesson_panel(
                 match drive.outcome {
                     Outcome::Running => {}
                     Outcome::Passed { stars } => {
-                        ui.heading(format!(
-                            "Passed {}",
-                            "★".repeat(stars as usize) + &"☆".repeat(3 - stars as usize)
-                        ));
+                        ui.heading(format!("Passed {}", star_text(stars)));
                     }
                     Outcome::Failed(why) => {
                         ui.colored_label(egui::Color32::RED, why);
@@ -274,4 +273,12 @@ fn replay(ui: &mut egui::Ui, trace: &Trace) {
                 p.vline(VLine::new("stall", t).color(egui::Color32::RED).width(2.0));
             }
         });
+}
+
+/// "★★☆" for 2 of 3; blank if never passed.
+fn star_text(stars: u8) -> String {
+    if stars == 0 {
+        return String::new();
+    }
+    "★".repeat(stars as usize) + &"☆".repeat(3 - stars as usize)
 }
