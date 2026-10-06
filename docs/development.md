@@ -14,9 +14,12 @@ docs/                 these docs, plus the design spec and plans
 |---|---|
 | `game/src/input.rs` | Turns leafwing-input-manager actions into `drivetrain::Controls` (keyboard pedals ramp; the right stick is an H-pattern shifter) |
 | `game/src/driving.rs` | The `Drive` resource; steps the sim and the active lesson each frame |
-| `game/src/cockpit.rs` | The world and the cockpit, built from Bevy primitives |
-| `game/src/hud.rs` | egui screens: start screen, instruments, hints, lesson panel |
-| `game/src/audio.rs` | Engine sound generated in code, fed through atomics |
+| `game/src/cockpit.rs` | The town, the lesson props, camera views and the cockpit, built from Bevy primitives |
+| `game/src/hud.rs` | egui screens: start screen, instruments, hints, lesson panel, replay graph |
+| `game/src/audio.rs` | Engine sound and one-shot effects (grind, stall, ratchet), generated in code |
+| `game/src/save.rs` | Saves progress, choices, bindings and calibration (browser storage, or a JSON file on desktop) |
+| `game/src/controls_ui.rs` | Controls screen: rebinding keys and gamepad buttons |
+| `game/src/pedals.rs` | Steering wheel and pedal calibration wizard |
 
 ## Tests
 
