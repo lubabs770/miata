@@ -56,7 +56,7 @@ pub struct Drive {
     /// Cup used in free drive (lessons keep their own).
     pub free_cup: Cup,
     pub last_events: Vec<Event>,
-    /// Free-drive transmission mode. Lessons are always Manual.
+    /// Free-drive transmission mode. Each lesson sets its own.
     pub mode: TransmissionMode,
     pub trace: Trace,
 }
@@ -90,7 +90,7 @@ impl Drive {
             self.sim.set_mode(mode);
         }
         if let Some(id) = lesson {
-            let run = LessonRun::new(id);
+            let mut run = LessonRun::new(id);
             pedals.handbrake_on = run.setup(&mut self.sim);
             self.lesson = Some(run);
         }

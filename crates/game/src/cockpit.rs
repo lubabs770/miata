@@ -3,7 +3,7 @@
 use std::f32::consts::{FRAC_PI_2, PI};
 
 use bevy::prelude::*;
-use drivetrain::{CAR_LEN, LessonId, PARK_BOX, SimState};
+use drivetrain::{CAR_LEN, CORNER_X, LessonId, PARK_BOX, SimState};
 use leafwing_input_manager::prelude::*;
 
 use crate::driving::Drive;
@@ -278,6 +278,18 @@ fn spawn_car(
 
 /// Sim x/y are a ground plane with heading 0 = sim +x. In Bevy the car
 /// faces -Z, so sim +x → world -Z and sim +y (left) → world -X.
+/// Road height at sim distance `x` on a slope of `g`. Uphill starts at
+/// ground level; downhill starts at the top so the road never sinks below
+/// the flat ground.
+fn road_height(x: f32, g: f32) -> f32 {
+    let along = if g >= 0.0 {
+        HILL_RUN_IN + x
+    } else {
+        HILL_LEN - HILL_RUN_IN - x
+    };
+    (along * g.abs()).max(0.0)
+}
+
 fn grade(drive: &Drive) -> f32 {
     drive.lesson.as_ref().map_or(0.0, |l| l.env().grade)
 }
@@ -287,21 +299,21 @@ fn grade(drive: &Drive) -> f32 {
 fn follow_sim(drive: Res<Drive>, mut rig: Single<&mut Transform, With<CarRig>>) {
     let s = drive.sim.state();
     let g = grade(&drive);
-    rig.translation = Vec3::new(-s.y, ((HILL_RUN_IN + s.x) * g).max(0.0), -s.x);
+    rig.translation = Vec3::new(-s.y, road_height(s.x, g), -s.x);
     rig.rotation = Quat::from_rotation_y(s.heading) * Quat::from_rotation_x(g.atan());
 }
 
 fn show_hill(drive: Res<Drive>, mut hill: Single<(&mut Transform, &mut Visibility), With<Hill>>) {
     let g = grade(&drive);
     let (t, vis) = &mut *hill;
-    **vis = if g > 0.0 {
+    **vis = if g != 0.0 {
         Visibility::Inherited
     } else {
         Visibility::Hidden
     };
     // Centre of the slope, HILL_LEN/2 ahead of where it starts.
     let mid = HILL_LEN / 2.0 - HILL_RUN_IN;
-    t.translation = Vec3::new(0.0, (HILL_RUN_IN + mid) * g - 0.05, -mid);
+    t.translation = Vec3::new(0.0, road_height(mid, g) - 0.05, -mid);
     t.rotation = Quat::from_rotation_x(g.atan());
     t.scale = Vec3::new(1.0, 1.0, (1.0 + g * g).sqrt());
 }
@@ -397,6 +409,8 @@ struct LeadCar;
 struct StopProp;
 #[derive(Component)]
 struct ParkingLines;
+#[derive(Component)]
+struct CornerSign;
 
 fn spawn_props(
     mut commands: Commands,
@@ -431,6 +445,25 @@ fn spawn_props(
                 Transform::from_xyz(4.6, 2.2, 0.03).with_rotation(Quat::from_rotation_x(FRAC_PI_2)),
             ));
         });
+    // Yellow chevron board marking the corner in the gear-choice lesson.
+    commands
+        .spawn((
+            CornerSign,
+            Visibility::Hidden,
+            Transform::from_xyz(4.6, 0.0, -CORNER_X),
+        ))
+        .with_children(|p| {
+            p.spawn((
+                Mesh3d(meshes.add(Cylinder::new(0.04, 1.6))),
+                white.clone(),
+                Transform::from_xyz(0.0, 0.8, 0.0),
+            ));
+            p.spawn((
+                Mesh3d(meshes.add(Cuboid::new(1.4, 0.6, 0.04))),
+                mat(&mut materials, Color::srgb(0.95, 0.8, 0.1)),
+                Transform::from_xyz(0.0, 1.7, 0.0),
+            ));
+        });
     // Parking space outline. PARK_BOX is where the driver's seat must stop,
     // so the painted space runs a car-length ahead of it.
     let (near, far) = (PARK_BOX.0 - 1.0, PARK_BOX.1 + 3.0);
@@ -462,6 +495,7 @@ fn place_props(
         Single<(&mut Transform, &mut Visibility), With<LeadCar>>,
         Single<(&mut Transform, &mut Visibility), With<StopProp>>,
         Single<&mut Visibility, With<ParkingLines>>,
+        Single<&mut Visibility, With<CornerSign>>,
     )>,
 ) {
     let lesson = drive.lesson.as_ref();
@@ -486,7 +520,8 @@ fn place_props(
         let line = lesson.and_then(|l| l.id.stop_line());
         **vis = shown(line.is_some());
         let line = line.unwrap_or(0.0);
-        t.translation = Vec3::new(0.0, (HILL_RUN_IN + line) * grade(&drive), -line);
+        t.translation = Vec3::new(0.0, road_height(line, grade(&drive)), -line);
     }
     **q.p2() = shown(lesson.is_some_and(|l| l.id == LessonId::Parking));
+    **q.p3() = shown(lesson.is_some_and(|l| l.id == LessonId::CornerGear));
 }

@@ -1,5 +1,5 @@
 use crate::score::{Cup, stars};
-use crate::sim::{Controls, Env, Event, Sim, SimState};
+use crate::sim::{Controls, Env, Event, Sim, SimState, TransmissionMode};
 
 /// Slope used by the hill lessons (8%: a steep-ish town street).
 pub const HILL_GRADE: f32 = 0.08;
@@ -10,6 +10,9 @@ pub const STOP_LINE: f32 = 40.0;
 pub const HILL_STOP_LINE: f32 = 25.0;
 /// Bumper-to-reference distance used for following gaps.
 pub const CAR_LEN: f32 = 4.0;
+/// Gear-choice lesson: the corner's distance ahead, and its speed limit.
+pub const CORNER_X: f32 = 200.0;
+const CORNER_KMH: f32 = 40.0;
 /// Stop-and-go: how many times the car in front starts and stops.
 const TRAFFIC_CYCLES: u8 = 4;
 
@@ -97,10 +100,13 @@ pub enum LessonId {
     Traffic,
     StopSign,
     HillStopSign,
+    ShiftPoints,
+    EngineBraking,
+    CornerGear,
 }
 
 impl LessonId {
-    pub const ALL: [LessonId; 12] = [
+    pub const ALL: [LessonId; 15] = [
         LessonId::BitePoint,
         LessonId::PullAway,
         LessonId::Stop,
@@ -113,6 +119,9 @@ impl LessonId {
         LessonId::Traffic,
         LessonId::StopSign,
         LessonId::HillStopSign,
+        LessonId::ShiftPoints,
+        LessonId::EngineBraking,
+        LessonId::CornerGear,
     ];
 
     pub fn title(self) -> &'static str {
@@ -129,6 +138,9 @@ impl LessonId {
             LessonId::Traffic => "10. Stop-and-go traffic",
             LessonId::StopSign => "11. Stop sign and turn",
             LessonId::HillStopSign => "12. Stop sign on a hill",
+            LessonId::ShiftPoints => "13. Paddles: shift points",
+            LessonId::EngineBraking => "14. Paddles: engine braking downhill",
+            LessonId::CornerGear => "15. Paddles: gear for the corner",
         }
     }
 
@@ -184,9 +196,44 @@ impl LessonId {
                 "Stop sign on an uphill. Stop fully at the line, then do a hill start and \
                  drive 20 m on, rolling back less than half a metre."
             }
+            LessonId::ShiftPoints => {
+                "Paddle-shift car: the clutch is automatic. Paddle up (E / RB) for 1st, \
+                 accelerate, and shift up in the middle of the rev range — not so early the \
+                 engine lugs, not so late you hit the limiter. Reach 60 km/h in 3rd or higher."
+            }
+            LessonId::EngineBraking => {
+                "A long 8% descent in top gear. Paddle down (Q / LB) so the engine holds your speed. \
+                 Stay under 70 km/h for 300 m using the brakes for no more than 3 seconds."
+            }
+            LessonId::CornerGear => {
+                "Tight corner 200 m ahead. Brake to under 40 km/h and paddle down to 2nd or \
+                 3rd before it, then drive out of the corner without lugging."
+            }
         }
     }
 
+    /// Road slope for this lesson (negative = downhill).
+    pub fn grade(self) -> f32 {
+        if self.is_hill() {
+            HILL_GRADE
+        } else if self == LessonId::EngineBraking {
+            -HILL_GRADE
+        } else {
+            0.0
+        }
+    }
+
+    /// Lessons 13–15 teach paddle shifting; the rest are manual.
+    pub fn mode(self) -> TransmissionMode {
+        match self {
+            LessonId::ShiftPoints | LessonId::EngineBraking | LessonId::CornerGear => {
+                TransmissionMode::Paddles
+            }
+            _ => TransmissionMode::Manual,
+        }
+    }
+
+    /// Uphill lessons (rollback matters).
     pub fn is_hill(self) -> bool {
         matches!(
             self,
@@ -220,6 +267,14 @@ pub struct LessonRun {
     pub lead: Option<Lead>,
     stopped_at_line: bool,
     timer_s: f32,
+    /// Seconds spent on the brake (engine-braking lesson).
+    brake_s: f32,
+    /// Previous frame's rpm and gear, to judge where upshifts happened.
+    last_rpm: f32,
+    last_gear: i8,
+    /// This car's rev range, captured at setup.
+    idle_rpm: f32,
+    redline_rpm: f32,
 }
 
 impl LessonRun {
@@ -231,12 +286,20 @@ impl LessonRun {
             lead: (id == LessonId::Traffic).then(Lead::new),
             stopped_at_line: false,
             timer_s: 0.0,
+            brake_s: 0.0,
+            last_rpm: 0.0,
+            last_gear: 0,
+            idle_rpm: 850.0,
+            redline_rpm: 7000.0,
         }
     }
 
     /// Put the car in the lesson's starting state. Returns whether the
     /// handbrake starts on.
-    pub fn setup(&self, sim: &mut Sim) -> bool {
+    pub fn setup(&mut self, sim: &mut Sim) -> bool {
+        sim.set_mode(self.id.mode());
+        self.idle_rpm = sim.car.idle_rpm;
+        self.redline_rpm = sim.car.redline_rpm;
         match self.id {
             LessonId::BitePoint => {
                 sim.set_moving(1, 0.0);
@@ -261,12 +324,21 @@ impl LessonRun {
                 sim.set_moving(2, 20.0 / 3.6);
                 false
             }
+            LessonId::ShiftPoints => false,
+            LessonId::EngineBraking => {
+                sim.set_moving(sim.car.top_gear(), 55.0 / 3.6);
+                false
+            }
+            LessonId::CornerGear => {
+                sim.set_moving(4.min(sim.car.top_gear()), 70.0 / 3.6);
+                false
+            }
         }
     }
 
     pub fn env(&self) -> Env {
         Env {
-            grade: if self.id.is_hill() { HILL_GRADE } else { 0.0 },
+            grade: self.id.grade(),
         }
     }
 
@@ -275,6 +347,9 @@ impl LessonRun {
         self.grinds += events.iter().filter(|e| **e == Event::Grind).count() as u32;
         if events.contains(&Event::Stalled) {
             return Outcome::Failed("Stalled. Clutch in, turn the key, try again.");
+        }
+        if let Some(failed) = self.judge_paddles(s, c, events, dt) {
+            return failed;
         }
         if let Some(lead) = &mut self.lead {
             lead.step(dt);
@@ -340,6 +415,9 @@ impl LessonRun {
             LessonId::HillStopSign => {
                 self.stopped_at_line && s.x >= HILL_STOP_LINE + 20.0 && s.clutch_engagement >= 1.0
             }
+            LessonId::ShiftPoints => s.speed_mps * 3.6 >= 60.0 && s.gear >= 3,
+            LessonId::EngineBraking => s.x >= 300.0,
+            LessonId::CornerGear => s.x >= CORNER_X + 60.0,
         };
         let hold_s = match self.id {
             LessonId::BitePoint => 3.0,
@@ -355,6 +433,70 @@ impl LessonRun {
         } else {
             Outcome::Running
         }
+    }
+
+    /// Rules for the paddle lessons. Returns a failure, if any; also records
+    /// this frame's rpm and gear for the next one.
+    fn judge_paddles(
+        &mut self,
+        s: &SimState,
+        c: &Controls,
+        events: &[Event],
+        dt: f32,
+    ) -> Option<Outcome> {
+        let (last_rpm, last_gear) = (self.last_rpm, self.last_gear);
+        self.last_rpm = s.engine_rpm;
+        self.last_gear = s.gear;
+        let kmh = s.speed_mps * 3.6;
+        let band = self.redline_rpm - self.idle_rpm;
+        match self.id {
+            LessonId::ShiftPoints => {
+                let upshifted = events
+                    .iter()
+                    .any(|e| matches!(e, Event::Shifted(g) if *g > last_gear && last_gear >= 1));
+                if upshifted && last_rpm < self.idle_rpm + 0.2 * band {
+                    return Some(Outcome::Failed(
+                        "Shifted too early — the engine lugged. Let it rev more first.",
+                    ));
+                }
+                if s.engine_rpm > self.redline_rpm {
+                    return Some(Outcome::Failed(
+                        "Past the redline. Shift up before the limiter.",
+                    ));
+                }
+            }
+            LessonId::EngineBraking => {
+                if c.brake > 0.05 {
+                    self.brake_s += dt;
+                }
+                if kmh > 70.0 {
+                    return Some(Outcome::Failed(
+                        "Too fast. Paddle down so the engine holds the car.",
+                    ));
+                }
+                if self.brake_s > 3.0 {
+                    return Some(Outcome::Failed("Too much brake. Use a lower gear instead."));
+                }
+            }
+            LessonId::CornerGear => {
+                let in_corner = (CORNER_X - 5.0..=CORNER_X + 5.0).contains(&s.x);
+                if in_corner && kmh > CORNER_KMH {
+                    return Some(Outcome::Failed("Too fast for the corner. Brake earlier."));
+                }
+                if in_corner && s.gear > 3 {
+                    return Some(Outcome::Failed(
+                        "Wrong gear for the corner. Paddle down to 2nd or 3rd before it.",
+                    ));
+                }
+                if s.x > CORNER_X && s.engine_rpm < self.idle_rpm + 0.1 * band && c.throttle > 0.3 {
+                    return Some(Outcome::Failed(
+                        "Lugging out of the corner. That gear is too high.",
+                    ));
+                }
+            }
+            _ => {}
+        }
+        None
     }
 
     /// Live coaching line for this frame, if any.
@@ -419,6 +561,19 @@ impl LessonRun {
                 if self.id.stop_line().is_some_and(|l| s.x > l - 20.0) =>
             {
                 Some("Stop sign: brake, clutch in, stop at the line.")
+            }
+            LessonId::ShiftPoints if s.gear == 0 => Some("Paddle up (E / RB) for 1st, then gas."),
+            LessonId::ShiftPoints if s.engine_rpm > self.redline_rpm * 0.75 => {
+                Some("Shift up now.")
+            }
+            LessonId::EngineBraking if s.speed_mps * 3.6 > 58.0 => {
+                Some("Paddle down (Q / LB): let the engine brake.")
+            }
+            LessonId::CornerGear
+                if (CORNER_X - 150.0..CORNER_X).contains(&s.x)
+                    && (s.speed_mps * 3.6 > CORNER_KMH || s.gear > 3) =>
+            {
+                Some("Corner ahead: brake under 40 km/h, paddle down to 2nd or 3rd.")
             }
             _ => None,
         }

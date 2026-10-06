@@ -477,3 +477,94 @@ fn hill_stop_sign_then_hill_start_passes() {
     );
     assert!(matches!(out, Outcome::Passed { .. }), "{out:?}");
 }
+
+/// Paddle driver: full-ish gas, paddle up whenever rpm passes `shift_at`.
+fn paddler(shift_at: f32) -> impl FnMut(f32, &Sim) -> Controls {
+    let mut last_shift = -1.0;
+    move |t, sim| {
+        let s = sim.state();
+        let up = s.gear == 0 || (s.engine_rpm > shift_at && t - last_shift > 0.5);
+        if up {
+            last_shift = t;
+        }
+        Controls {
+            throttle: 0.7,
+            sequential: up as i8,
+            ..Default::default()
+        }
+    }
+}
+
+#[test]
+fn shift_points_mid_range_pass() {
+    let out = play(LessonId::ShiftPoints, 30.0, paddler(4500.0));
+    assert!(matches!(out, Outcome::Passed { .. }), "{out:?}");
+}
+
+#[test]
+fn shift_points_too_early_fail() {
+    let out = play(LessonId::ShiftPoints, 30.0, paddler(1500.0));
+    assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
+}
+
+#[test]
+fn shift_points_never_shifting_fails() {
+    let out = play(LessonId::ShiftPoints, 30.0, paddler(f32::MAX));
+    assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
+}
+
+#[test]
+fn engine_braking_two_gears_down_passes() {
+    let out = play(LessonId::EngineBraking, 60.0, |t, _| Controls {
+        // One paddle-down now, another a second later.
+        sequential: if t < 1.0 / 60.0 || (1.0..1.0 + 1.0 / 60.0).contains(&t) {
+            -1
+        } else {
+            0
+        },
+        ..Default::default()
+    });
+    assert!(matches!(out, Outcome::Passed { .. }), "{out:?}");
+}
+
+#[test]
+fn engine_braking_coasting_in_top_gear_fails() {
+    let out = play(LessonId::EngineBraking, 60.0, |_, _| Controls::default());
+    assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
+}
+
+#[test]
+fn corner_with_brake_and_downshift_passes() {
+    let mut downshifts = 0;
+    let out = play(LessonId::CornerGear, 60.0, move |_, sim| {
+        let s = sim.state();
+        let kmh = s.speed_mps * 3.6;
+        if s.x < CORNER_X - 15.0 && kmh > 32.0 {
+            return Controls {
+                brake: 0.4,
+                ..Default::default()
+            };
+        }
+        if s.gear > 2 && downshifts < 2 {
+            downshifts += 1;
+            return Controls {
+                sequential: -1,
+                ..Default::default()
+            };
+        }
+        Controls {
+            throttle: if s.x > CORNER_X { 0.4 } else { 0.1 },
+            ..Default::default()
+        }
+    });
+    assert!(matches!(out, Outcome::Passed { .. }), "{out:?}");
+}
+
+#[test]
+fn corner_taken_in_top_gear_at_speed_fails() {
+    let out = play(LessonId::CornerGear, 30.0, |_, _| Controls {
+        throttle: 0.3,
+        ..Default::default()
+    });
+    assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
+}
