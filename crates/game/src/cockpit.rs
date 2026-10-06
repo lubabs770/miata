@@ -3,7 +3,7 @@
 use std::f32::consts::{FRAC_PI_2, PI};
 
 use bevy::prelude::*;
-use drivetrain::{CAR_LEN, CORNER_X, LessonId, PARK_BOX, SimState};
+use drivetrain::{CAR_LEN, CORNER_X, LessonId, PARK_BOX, STOP_LINE, SimState};
 use leafwing_input_manager::prelude::*;
 
 use crate::driving::Drive;
@@ -19,6 +19,10 @@ const STEER_WHEEL_TURNS: f32 = 1.5 * PI;
 /// rolling back still has road under it.
 const HILL_RUN_IN: f32 = 30.0;
 const HILL_LEN: f32 = 600.0;
+/// Free-drive town: block size and how many avenues/streets.
+const BLOCK: f32 = 100.0;
+const TOWN_AVENUES: i32 = 6;
+const TOWN_STREETS: i32 = 20;
 
 #[derive(Component)]
 struct CarRig;
@@ -155,24 +159,62 @@ fn spawn_world(
             }
         }
     }
-    // A few buildings either side, placed deterministically.
-    let block = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
-    for i in 0..120 {
-        let h = 4.0 + (i * 7 % 13) as f32;
-        let w = 6.0 + (i * 5 % 7) as f32;
-        let side = if i % 2 == 0 { -1.0 } else { 1.0 };
-        let tint = 0.55 + (i * 3 % 5) as f32 * 0.08;
+    // Town grid: avenues every BLOCK m across, cross streets every BLOCK m
+    // ahead starting at the stop-sign lesson's line, buildings in the blocks.
+    let asphalt = mat(&mut materials, Color::srgb(0.25, 0.25, 0.27));
+    let half_w = TOWN_AVENUES as f32 * BLOCK / 2.0;
+    for a in -(TOWN_AVENUES / 2)..=TOWN_AVENUES / 2 {
+        if a != 0 {
+            commands.spawn((
+                Mesh3d(meshes.add(Cuboid::new(8.0, 0.02, ROAD_LEN))),
+                asphalt.clone(),
+                Transform::from_xyz(a as f32 * BLOCK, 0.0, -ROAD_LEN / 2.0 + 50.0),
+            ));
+        }
+    }
+    let street = meshes.add(Cuboid::new(2.0 * half_w + 8.0, 0.021, 8.0));
+    for k in 0..TOWN_STREETS {
         commands.spawn((
-            Mesh3d(block.clone()),
-            mat(&mut materials, Color::srgb(tint, tint * 0.9, tint * 0.8)),
-            Transform::from_xyz(
-                side * (14.0 + (i % 3) as f32 * 4.0),
-                h / 2.0,
-                20.0 - i as f32 * 30.0,
-            )
-            .with_scale(Vec3::new(w, h, w)),
+            Mesh3d(street.clone()),
+            asphalt.clone(),
+            Transform::from_xyz(0.0, 0.0, -cross_street_z(k)),
         ));
     }
+    let block = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
+    let tints: Vec<_> = (0..5)
+        .map(|t| {
+            let v = 0.55 + t as f32 * 0.08;
+            mat(&mut materials, Color::srgb(v, v * 0.9, v * 0.8))
+        })
+        .collect();
+    for a in -(TOWN_AVENUES / 2)..TOWN_AVENUES / 2 {
+        for k in 0..TOWN_STREETS - 1 {
+            // Four buildings per block, sized by a cheap deterministic hash.
+            let (x0, z0) = (a as f32 * BLOCK + 10.0, cross_street_z(k) + 10.0);
+            for n in 0..4u32 {
+                let hsh = (a as u32).wrapping_mul(73_856_093)
+                    ^ (k as u32).wrapping_mul(19_349_663)
+                    ^ n.wrapping_mul(83_492_791);
+                let (w, d) = (14.0 + (hsh % 9) as f32, 14.0 + (hsh / 9 % 9) as f32);
+                let h = 5.0 + (hsh / 81 % 20) as f32;
+                let (cx, cz) = (
+                    x0 + w / 2.0 + (n % 2) as f32 * 42.0,
+                    z0 + d / 2.0 + (n / 2) as f32 * 42.0,
+                );
+                commands.spawn((
+                    Mesh3d(block.clone()),
+                    tints[(hsh % 5) as usize].clone(),
+                    Transform::from_xyz(cx, h / 2.0, -cz).with_scale(Vec3::new(w, h, d)),
+                ));
+            }
+        }
+    }
+}
+
+/// Distance ahead of the start to cross street `k` (the first one is at
+/// the stop-sign lesson's line, so its left turn goes onto a street).
+fn cross_street_z(k: i32) -> f32 {
+    STOP_LINE + 4.0 + k as f32 * BLOCK
 }
 
 fn spawn_car(

@@ -41,12 +41,15 @@ pass the lessons here, the sequence and timing carry over to a real car.
   the computer works the clutch) and **Paddles** (+/−, like a modern
   dual-clutch car).
 - Cockpit, hood, chase and bird's-eye camera views.
+- A low-poly town for free drive: a grid of avenues and cross streets lined
+  with buildings.
+- Sound effects: gear grind, stall, handbrake ratchet and refused paddle shifts.
 - A replay graph after every lesson attempt: clutch, gas, brake and rpm over
   time, with stalls marked, so you can see what your feet did.
 - Progress saving: best stars per lesson, plus your car and gearbox choices
   (browser storage on the web, a JSON file on desktop).
 
-Planned next: a free-drive town, more engine sounds, then real streets from OpenStreetMap. See the [design spec](docs/superpowers/specs/2026-10-06-miata-design.md).
+Planned next: real streets from OpenStreetMap. See the [design spec](docs/superpowers/specs/2026-10-06-miata-design.md).
 
 ## Controls
 
