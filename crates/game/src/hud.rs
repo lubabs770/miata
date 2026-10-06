@@ -3,9 +3,10 @@
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use drivetrain::{LessonId, Outcome, TransmissionMode};
+use egui_plot::{Legend, Line, Plot, PlotPoints, VLine};
 
 use crate::AppState;
-use crate::driving::Drive;
+use crate::driving::{Drive, Sample, Trace};
 use crate::input::Pedals;
 
 const KEYS: &str = "Keyboard: W gas · S brake · Left Shift clutch (hold; releases slowly) · A/D steer · \
@@ -191,6 +192,9 @@ fn lesson_panel(
                         ui.colored_label(egui::Color32::RED, why);
                     }
                 }
+                if drive.outcome != Outcome::Running {
+                    replay(ui, &drive.trace);
+                }
                 if ui.button("Retry (Enter)").clicked() {
                     start = Some(Some(run.id));
                 }
@@ -228,4 +232,46 @@ fn mode_name(m: TransmissionMode) -> &'static str {
         TransmissionMode::AutoClutch => "Auto-clutch (H-pattern, no clutch)",
         TransmissionMode::Paddles => "Paddles (+/-)",
     }
+}
+
+/// What your feet and the revs did during the attempt; stalls marked red.
+fn replay(ui: &mut egui::Ui, trace: &Trace) {
+    let series = |f: fn(&Sample) -> f32| -> PlotPoints<'static> {
+        trace
+            .samples
+            .iter()
+            .map(|s| [s.t as f64, f(s) as f64])
+            .collect::<Vec<_>>()
+            .into()
+    };
+    ui.label("Replay: pedals and revs");
+    Plot::new("replay")
+        .height(160.0)
+        .width(320.0)
+        .include_y(0.0)
+        .include_y(1.0)
+        .allow_drag(false)
+        .allow_zoom(false)
+        .allow_scroll(false)
+        .legend(Legend::default())
+        .show(ui, |p| {
+            p.line(
+                Line::new("clutch", series(|s| s.clutch))
+                    .color(egui::Color32::from_rgb(90, 140, 230)),
+            );
+            p.line(
+                Line::new("gas", series(|s| s.throttle))
+                    .color(egui::Color32::from_rgb(80, 190, 90)),
+            );
+            p.line(
+                Line::new("brake", series(|s| s.brake)).color(egui::Color32::from_rgb(220, 70, 60)),
+            );
+            p.line(
+                Line::new("rpm / redline", series(|s| s.rpm))
+                    .color(egui::Color32::from_rgb(240, 160, 40)),
+            );
+            for &t in &trace.stalls {
+                p.vline(VLine::new("stall", t).color(egui::Color32::RED).width(2.0));
+            }
+        });
 }

@@ -1,10 +1,47 @@
 //! Owns the simulation and the active lesson; steps them once per frame.
 
 use bevy::prelude::*;
-use drivetrain::{CarSpec, Cup, Event, LessonId, LessonRun, Outcome, Sim, TransmissionMode};
+use drivetrain::{
+    CarSpec, Controls, Cup, Event, LessonId, LessonRun, Outcome, Sim, TransmissionMode,
+};
 
 use crate::AppState;
 use crate::input::Pedals;
+
+/// One frame of a lesson attempt, for the replay graph.
+#[derive(Clone, Copy)]
+pub struct Sample {
+    pub t: f32,
+    pub clutch: f32,
+    pub throttle: f32,
+    pub brake: f32,
+    /// rpm / redline.
+    pub rpm: f32,
+}
+
+/// Pedals and revs over one lesson attempt, plus when it stalled.
+#[derive(Default)]
+pub struct Trace {
+    pub samples: Vec<Sample>,
+    pub stalls: Vec<f32>,
+    t: f32,
+}
+
+impl Trace {
+    fn record(&mut self, c: &Controls, rpm_frac: f32, stalled: bool, dt: f32) {
+        self.t += dt;
+        self.samples.push(Sample {
+            t: self.t,
+            clutch: c.clutch,
+            throttle: c.throttle,
+            brake: c.brake,
+            rpm: rpm_frac,
+        });
+        if stalled {
+            self.stalls.push(self.t);
+        }
+    }
+}
 
 #[derive(Resource)]
 pub struct Drive {
@@ -19,8 +56,9 @@ pub struct Drive {
     /// Cup used in free drive (lessons keep their own).
     pub free_cup: Cup,
     pub last_events: Vec<Event>,
-    /// Free-drive transmission mode. Lessons 1–3 are always Manual.
+    /// Free-drive transmission mode. Lessons are always Manual.
     pub mode: TransmissionMode,
+    pub trace: Trace,
 }
 
 impl Drive {
@@ -35,6 +73,7 @@ impl Drive {
             free_cup: Cup::default(),
             last_events: Vec::new(),
             mode: TransmissionMode::Manual,
+            trace: Trace::default(),
         }
     }
 
@@ -77,6 +116,7 @@ pub fn step(mut drive: ResMut<Drive>, pedals: Res<Pedals>, time: Res<Time>) {
         hint,
         free_cup,
         last_events,
+        trace,
         ..
     } = &mut *drive;
     let env = lesson.as_ref().map(|l| l.env()).unwrap_or_default();
@@ -85,6 +125,13 @@ pub fn step(mut drive: ResMut<Drive>, pedals: Res<Pedals>, time: Res<Time>) {
     match lesson {
         Some(run) if *outcome == Outcome::Running => {
             *outcome = run.update(&s, &pedals.controls, last_events, dt);
+            let stalled = last_events.contains(&Event::Stalled);
+            trace.record(
+                &pedals.controls,
+                s.engine_rpm / sim.car.redline_rpm,
+                stalled,
+                dt,
+            );
             *hint = run.hint(&s, &pedals.controls);
         }
         Some(_) => *hint = None,
