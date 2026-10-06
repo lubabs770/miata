@@ -1,3 +1,4 @@
+mod audio;
 mod cockpit;
 mod driving;
 mod hud;
@@ -28,6 +29,12 @@ fn main() {
         .add_plugins(EguiPlugin::default())
         .add_plugins(InputManagerPlugin::<input::Action>::default())
         .init_state::<AppState>()
-        .add_plugins((input::plugin, driving::plugin, cockpit::plugin, hud::plugin))
+        .add_plugins((
+            input::plugin,
+            driving::plugin,
+            cockpit::plugin,
+            hud::plugin,
+            audio::plugin,
+        ))
         .run();
 }
