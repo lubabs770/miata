@@ -1,8 +1,6 @@
-// Some `Drive` fields are only read once the HUD exists; Task 7 removes this.
-#![allow(dead_code)]
-
 mod cockpit;
 mod driving;
+mod hud;
 mod input;
 
 use bevy::prelude::*;
@@ -30,6 +28,6 @@ fn main() {
         .add_plugins(EguiPlugin::default())
         .add_plugins(InputManagerPlugin::<input::Action>::default())
         .init_state::<AppState>()
-        .add_plugins((input::plugin, driving::plugin, cockpit::plugin))
+        .add_plugins((input::plugin, driving::plugin, cockpit::plugin, hud::plugin))
         .run();
 }
