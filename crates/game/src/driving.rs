@@ -84,7 +84,7 @@ pub fn step(mut drive: ResMut<Drive>, pedals: Res<Pedals>, time: Res<Time>) {
     let s = *sim.state();
     match lesson {
         Some(run) if *outcome == Outcome::Running => {
-            *outcome = run.update(&s, last_events, dt);
+            *outcome = run.update(&s, &pedals.controls, last_events, dt);
             *hint = run.hint(&s, &pedals.controls);
         }
         Some(_) => *hint = None,

@@ -16,11 +16,18 @@ const SPEEDO_MAX_KMH: f32 = 220.0;
 /// Needle sweep: 135° either side of straight up.
 const SWEEP: f32 = 0.75 * PI;
 const STEER_WHEEL_TURNS: f32 = 1.5 * PI;
+/// Hill lessons: the slope starts this far behind the car's start point, so
+/// rolling back still has road under it.
+const HILL_RUN_IN: f32 = 30.0;
+const HILL_LEN: f32 = 600.0;
 
 #[derive(Component)]
 struct CarRig;
 #[derive(Component)]
 struct DriverCamera;
+/// Sloped road shown only during hill lessons.
+#[derive(Component)]
+struct Hill;
 /// Outside body, hidden in the cockpit view so it doesn't block the camera.
 #[derive(Component)]
 struct Body;
@@ -77,7 +84,10 @@ pub fn plugin(app: &mut App) {
     app.insert_resource(ClearColor(Color::srgb(0.62, 0.78, 0.93)))
         .init_resource::<View>()
         .add_systems(Startup, (spawn_world, spawn_car))
-        .add_systems(Update, (follow_sim, animate_cockpit, switch_view));
+        .add_systems(
+            Update,
+            (follow_sim, animate_cockpit, switch_view, show_hill),
+        );
 }
 
 fn mat(materials: &mut Assets<StandardMaterial>, c: Color) -> MeshMaterial3d<StandardMaterial> {
@@ -110,6 +120,13 @@ fn spawn_world(
         Mesh3d(meshes.add(Cuboid::new(8.0, 0.02, ROAD_LEN))),
         mat(&mut materials, Color::srgb(0.25, 0.25, 0.27)),
         Transform::from_xyz(0.0, 0.0, -ROAD_LEN / 2.0 + 50.0),
+    ));
+    commands.spawn((
+        Hill,
+        Visibility::Hidden,
+        Mesh3d(meshes.add(Cuboid::new(8.0, 0.1, HILL_LEN))),
+        mat(&mut materials, Color::srgb(0.3, 0.3, 0.32)),
+        Transform::default(),
     ));
     // Centre dashes and roadside posts give a sense of speed.
     let dash = meshes.add(Cuboid::new(0.15, 0.03, 3.0));
@@ -256,10 +273,32 @@ fn spawn_car(
 
 /// Sim x/y are a ground plane with heading 0 = sim +x. In Bevy the car
 /// faces -Z, so sim +x → world -Z and sim +y (left) → world -X.
+fn grade(drive: &Drive) -> f32 {
+    drive.lesson.as_ref().map_or(0.0, |l| l.env().grade)
+}
+
+/// On a hill the road height grows with distance along sim x (lessons drive
+/// straight, heading 0), and the car pitches nose-up.
 fn follow_sim(drive: Res<Drive>, mut rig: Single<&mut Transform, With<CarRig>>) {
     let s = drive.sim.state();
-    rig.translation = Vec3::new(-s.y, 0.0, -s.x);
-    rig.rotation = Quat::from_rotation_y(s.heading);
+    let g = grade(&drive);
+    rig.translation = Vec3::new(-s.y, ((HILL_RUN_IN + s.x) * g).max(0.0), -s.x);
+    rig.rotation = Quat::from_rotation_y(s.heading) * Quat::from_rotation_x(g.atan());
+}
+
+fn show_hill(drive: Res<Drive>, mut hill: Single<(&mut Transform, &mut Visibility), With<Hill>>) {
+    let g = grade(&drive);
+    let (t, vis) = &mut *hill;
+    **vis = if g > 0.0 {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
+    // Centre of the slope, HILL_LEN/2 ahead of where it starts.
+    let mid = HILL_LEN / 2.0 - HILL_RUN_IN;
+    t.translation = Vec3::new(0.0, (HILL_RUN_IN + mid) * g - 0.05, -mid);
+    t.rotation = Quat::from_rotation_x(g.atan());
+    t.scale = Vec3::new(1.0, 1.0, (1.0 + g * g).sqrt());
 }
 
 fn needle_angle(value: f32, max: f32) -> Quat {
