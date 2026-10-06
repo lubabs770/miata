@@ -5,6 +5,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A newer push to the same branch makes older runs pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -56,6 +61,10 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     # Ship as soon as the web build passes; check (clippy + tests) still gates PRs.
     needs: web
+    # Pages refuses overlapping deployments; queue them instead.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       pages: write

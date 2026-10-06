@@ -33,7 +33,22 @@ pub struct CarSpec {
     pub max_steer_rad: f32,
 }
 
+/// Car files compiled into the binary (the browser build can't read the disk).
+/// Miata first: it's the default.
+const BUNDLED: [&str; 3] = [
+    include_str!("../../../cars/miata.toml"),
+    include_str!("../../../cars/hot_hatch.toml"),
+    include_str!("../../../cars/pickup.toml"),
+];
+
 impl CarSpec {
+    pub fn bundled() -> Vec<CarSpec> {
+        BUNDLED
+            .iter()
+            .map(|s| Self::from_toml(s).expect("bundled car files are valid"))
+            .collect()
+    }
+
     pub fn from_toml(s: &str) -> Result<Self, toml::de::Error> {
         toml::from_str(s)
     }

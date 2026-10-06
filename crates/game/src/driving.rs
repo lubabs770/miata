@@ -8,6 +8,9 @@ use crate::input::Pedals;
 
 #[derive(Resource)]
 pub struct Drive {
+    pub cars: Vec<CarSpec>,
+    /// Index into `cars` of the car being driven.
+    pub car: usize,
     pub sim: Sim,
     /// `None` = free drive.
     pub lesson: Option<LessonRun>,
@@ -19,9 +22,11 @@ pub struct Drive {
 }
 
 impl Drive {
-    pub fn new(seed: u64) -> Self {
+    pub fn new(cars: Vec<CarSpec>, car: usize, seed: u64) -> Self {
         Self {
-            sim: Sim::new(CarSpec::miata(), seed),
+            sim: Sim::new(cars[car].clone(), seed),
+            cars,
+            car,
             lesson: None,
             outcome: Outcome::Running,
             hint: None,
@@ -36,7 +41,7 @@ impl Drive {
 
     /// Fresh car and attempt. `seed` varies the bite point.
     pub fn start(&mut self, lesson: Option<LessonId>, seed: u64, pedals: &mut Pedals) {
-        *self = Self::new(seed);
+        *self = Self::new(std::mem::take(&mut self.cars), self.car, seed);
         if let Some(id) = lesson {
             let run = LessonRun::new(id);
             pedals.handbrake_on = run.setup(&mut self.sim);
@@ -46,7 +51,7 @@ impl Drive {
 }
 
 pub fn plugin(app: &mut App) {
-    app.insert_resource(Drive::new(0))
+    app.insert_resource(Drive::new(CarSpec::bundled(), 0, 0))
         .add_systems(OnEnter(AppState::Driving), start_free_drive)
         .add_systems(Update, step.run_if(in_state(AppState::Driving)));
 }
@@ -64,6 +69,7 @@ pub fn step(mut drive: ResMut<Drive>, pedals: Res<Pedals>, time: Res<Time>) {
         hint,
         free_cup,
         last_events,
+        ..
     } = &mut *drive;
     let env = lesson.as_ref().map(|l| l.env()).unwrap_or_default();
     *last_events = sim.step(&pedals.controls, env, dt);
@@ -93,7 +99,7 @@ mod tests {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .init_resource::<Pedals>()
-            .insert_resource(Drive::new(1))
+            .insert_resource(Drive::new(CarSpec::bundled(), 0, 1))
             .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
                 16,
             )))

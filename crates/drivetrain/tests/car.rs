@@ -22,6 +22,18 @@ fn torque_curve_interpolates_and_clamps() {
 }
 
 #[test]
+fn every_car_file_is_bundled() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../cars");
+    let on_disk = std::fs::read_dir(dir).unwrap().count();
+    assert_eq!(
+        CarSpec::bundled().len(),
+        on_disk,
+        "add new cars/*.toml to BUNDLED in car.rs"
+    );
+    assert_eq!(CarSpec::bundled()[0].name, CarSpec::miata().name);
+}
+
+#[test]
 fn every_bundled_car_file_parses() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../cars");
     for entry in std::fs::read_dir(dir).unwrap() {

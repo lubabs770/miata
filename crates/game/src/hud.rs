@@ -134,10 +134,19 @@ fn lesson_panel(
 ) -> Result {
     let seed = time.elapsed().as_nanos() as u64;
     let mut start: Option<Option<LessonId>> = None;
+    let mut car = drive.car;
     egui::Window::new("Lessons")
         .anchor(egui::Align2::RIGHT_TOP, [-12.0, 12.0])
         .resizable(false)
         .show(contexts.ctx_mut()?, |ui| {
+            egui::ComboBox::from_label("car")
+                .selected_text(&drive.cars[drive.car].name)
+                .show_ui(ui, |ui| {
+                    for (i, c) in drive.cars.iter().enumerate() {
+                        ui.selectable_value(&mut car, i, &c.name);
+                    }
+                });
+            ui.separator();
             for id in LessonId::ALL {
                 if ui
                     .selectable_label(
@@ -185,6 +194,11 @@ fn lesson_panel(
         {
             start = drive.lesson.as_ref().map(|l| Some(l.id));
         }
+    }
+    if car != drive.car {
+        // A new car restarts whatever you were doing in it.
+        drive.car = car;
+        start = start.or(Some(drive.lesson.as_ref().map(|l| l.id)));
     }
     if let Some(choice) = start {
         drive.start(choice, seed, &mut pedals);

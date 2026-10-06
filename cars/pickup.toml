@@ -1,0 +1,29 @@
+# Generic old pickup, 4-speed with a granny first gear. Heavy, low-revving,
+# with a narrow, grabby clutch and weak idle: the stall-prone hard mode.
+name = "Old pickup"
+mass_kg = 1900.0
+wheelbase_m = 3.2
+tire_radius_m = 0.38
+idle_rpm = 650.0
+stall_rpm = 350.0
+redline_rpm = 4200.0
+limiter_rpm = 4500.0
+torque_curve = [[400.0, 170.0], [1000.0, 250.0], [2000.0, 300.0], [3000.0, 290.0], [4500.0, 220.0]]
+engine_inertia = 0.3
+friction_nm = 14.0
+friction_per_rad_s = 0.08
+idle_base_throttle = 0.06
+idle_gain = 2.0
+idle_max_throttle = 0.15
+gear_ratios = [6.32, 3.09, 1.69, 1.0]
+reverse_ratio = 7.44
+final_drive = 3.73
+clutch_capacity_nm = 500.0
+bite_point = 0.45
+bite_width = 0.10
+bite_variance = 0.10
+drag_cd_a = 1.1
+rolling_c = 0.015
+brake_force_n = 16000.0
+handbrake_force_n = 7000.0
+max_steer_rad = 0.55
